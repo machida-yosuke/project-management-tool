@@ -42,7 +42,11 @@ googleAuthRoute.get(
   googleAuth({ scope: ['openid', 'email', 'profile'] }),
   async (c) => {
     const redirectPath = getCookie(c, 'oauth_redirect') ?? '/';
-    deleteCookie(c, 'oauth_redirect', { path: '/' });
+    deleteCookie(c, 'oauth_redirect', {
+      path: '/',
+      sameSite: 'Lax',
+      secure: c.env.APP_ENV === 'production',
+    });
 
     const googleUser = c.get('user-google');
     if (!googleUser?.email || !googleUser.verified_email) {
