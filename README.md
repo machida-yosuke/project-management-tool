@@ -42,6 +42,14 @@ pnpm db:migrate:local    # apply migrations to the local D1 emulation
 pnpm dev   # run frontend (http://localhost:5173) and backend (http://localhost:8787)
 ```
 
+Testing the Google login flow locally requires the backend to run over HTTPS — `@hono/oauth-providers`'s internal `state` cookie is always `Secure`, which browsers silently drop over plain HTTP:
+
+```bash
+cd apps/backend && pnpm exec wrangler dev --local-protocol https
+```
+
+Then open `https://localhost:8787/health` once and accept the self-signed certificate warning before logging in. The redirect URI registered in Google Cloud Console must match (`https://localhost:8787/api/auth/google`).
+
 ## Common commands
 
 | Command | Description |

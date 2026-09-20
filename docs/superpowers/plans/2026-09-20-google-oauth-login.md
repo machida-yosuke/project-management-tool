@@ -1338,9 +1338,11 @@ EOF
 
 This task cannot be automated — it requires a real Google account and a browser. Do it after Task 11 is committed.
 
+**Important — local HTTPS is required, not optional.** Task 5's code review verified (by reading `@hono/oauth-providers/google`'s source) that the library hardcodes `secure: true` on its own internal `state` cookie, regardless of environment. Browsers silently refuse to store `Secure` cookies set over plain HTTP, so running the backend at `http://localhost:8787` (the default for `pnpm dev`) makes the login flow fail 100% of the time with an opaque `401` on the callback — not a flaky failure, a guaranteed one. Steps below start the backend over HTTPS instead.
+
 - [ ] **Step 1: Create the OAuth client**
 
-In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an OAuth 2.0 Client ID (Web application type). Add `http://localhost:8787/api/auth/google` as an authorized redirect URI (this is `redirect_uri`'s default value — the request URL of `GET /api/auth/google` itself, per `googleAuth()`'s implementation).
+In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an OAuth 2.0 Client ID (Web application type). Add `https://localhost:8787/api/auth/google` (note: `https`, not `http`) as an authorized redirect URI — this must exactly match the URL the backend will actually be served at in Step 4 below, since `redirect_uri` defaults to the request's own URL per `googleAuth()`'s implementation.
 
 - [ ] **Step 2: Set local secrets**
 
@@ -1356,10 +1358,25 @@ Edit `.dev.vars` and fill in `GOOGLE_ID` and `GOOGLE_SECRET` from the client cre
 Run: `cd /Users/my/project-management-tool && pnpm lint && pnpm typecheck && pnpm test && pnpm build`
 Expected: all pass.
 
-- [ ] **Step 4: Start both dev servers**
+- [ ] **Step 4: Start the backend over HTTPS and the frontend normally**
 
-Run: `cd /Users/my/project-management-tool && pnpm dev`
-Expected: frontend on `http://localhost:5173`, backend on `http://localhost:8787`.
+In one terminal, start the backend with `wrangler`'s built-in self-signed-certificate HTTPS mode (confirmed available via `pnpm exec wrangler dev --help` → `--local-protocol` accepts `https`):
+
+```bash
+cd /Users/my/project-management-tool/apps/backend
+pnpm exec wrangler dev --local-protocol https
+```
+
+Expected: backend on `https://localhost:8787`. In a second terminal, start the frontend as usual (it stays plain HTTP — only the backend needs HTTPS, since it's the one setting the `Secure` cookie; the frontend origin doesn't need to match):
+
+```bash
+cd /Users/my/project-management-tool/apps/frontend
+pnpm dev
+```
+
+Expected: frontend on `http://localhost:5173`.
+
+Before logging in, open `https://localhost:8787/health` directly in the browser once and accept the self-signed-certificate warning (e.g. Chrome: "Advanced" → "Proceed to localhost (unsafe)"). This is required — otherwise the browser silently fails the CORS preflight / fetch calls the frontend makes to the backend, which is easy to misdiagnose as a code bug.
 
 - [ ] **Step 5: Manually verify the full login flow**
 
@@ -1369,6 +1386,8 @@ Expected: frontend on `http://localhost:5173`, backend on `http://localhost:8787
 4. Click "ログアウト" — expect the name/logout button to disappear.
 5. Reload `http://localhost:5173/` — expect the redirect to `/login` again (session cleared).
 6. Repeat step 1–3, then manually navigate to `http://localhost:5173/nonexistent-but-past-guard-path` is unnecessary; instead verify the redirect-preservation UX directly: while logged out, open `http://localhost:5173/` in a fresh tab, confirm you land on `/login?redirect=%2F`, log in, and confirm you land back on `/` (not some other page) — this is the full redirect round-trip this design exists to support.
+
+If Step 5.2's redirect to Google fails or the callback 401s even after Step 4's HTTPS setup, check: (a) the redirect URI registered in Google Cloud Console matches `https://localhost:8787/api/auth/google` exactly, (b) the self-signed cert warning was actually accepted in the browser (not just dismissed), (c) `.dev.vars` has real, non-empty `GOOGLE_ID`/`GOOGLE_SECRET` values.
 
 - [ ] **Step 6: Note any deviations**
 
