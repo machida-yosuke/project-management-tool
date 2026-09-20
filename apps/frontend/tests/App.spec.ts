@@ -1,8 +1,9 @@
-import { createPinia, setActivePinia } from 'pinia';
+import { createPinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { router } from '../src/router';
 import App from '../src/App.vue';
+import { useAuthStore } from '../src/stores/auth';
 
 describe('App', () => {
   afterEach(() => {
@@ -10,16 +11,25 @@ describe('App', () => {
   });
 
   it('renders the app title', async () => {
-    // '/' now requires auth (Task 10), so the router guard calls the auth store during
-    // router.push below — an active Pinia instance must exist before that happens,
-    // mirroring main.ts's `app.use(createPinia())`.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
-    const pinia = createPinia();
-    setActivePinia(pinia);
-
-    await router.push('/');
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await router.push('/login');
+    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
 
     expect(wrapper.text()).toContain('Project Management Tool');
+  });
+
+  it('shows the user name and a logout button when authenticated', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    await router.push('/login');
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+
+    const authStore = useAuthStore(pinia);
+    authStore.status = 'authenticated';
+    authStore.user = { id: '1', email: 'a@example.com', name: 'Test User' };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('Test User');
+    expect(wrapper.find('button').exists()).toBe(true);
   });
 });
