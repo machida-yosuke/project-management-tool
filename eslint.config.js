@@ -45,5 +45,22 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-call': 'off',
     },
   },
+  {
+    files: ['apps/backend/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message:
+                'Cloudflare Workers do not support Node.js built-in modules in application code. If this is genuinely needed, it belongs in a config or test file outside src/, not here.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   eslintConfigPrettier,
 );
