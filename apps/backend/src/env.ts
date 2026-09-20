@@ -6,6 +6,9 @@ export interface Env {
   CACHE: KVNamespace;
   ATTACHMENTS: R2Bucket;
   APP_ENV: string;
+  FRONTEND_URL: string;
+  GOOGLE_ID: string;
+  GOOGLE_SECRET: string;
 }
 
 type BackendEnv = Env;
