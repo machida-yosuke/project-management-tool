@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pm-tool-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pm-tool-db",
+      "database_id": "REPLACE_WITH_WRANGLER_D1_CREATE_OUTPUT",
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "REPLACE_WITH_WRANGLER_KV_NAMESPACE_CREATE_SESSIONS_OUTPUT",
+    },
+    {
+      "binding": "CACHE",
+      "id": "REPLACE_WITH_WRANGLER_KV_NAMESPACE_CREATE_CACHE_OUTPUT",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "pm-tool-attachments",
+    },
+  ],
+  "vars": {
+    "APP_ENV": "development",
+  },
+}

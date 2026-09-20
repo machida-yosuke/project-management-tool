@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "noEmit": true,
+    "types": ["vite/client"],
+    "plugins": [{ "name": "@vue/typescript-plugin" }]
+  },
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+}
