@@ -17,7 +17,7 @@ export const requireAuthGuard = async (
   if (!to.meta.requiresAuth) return true;
 
   const authStore = useAuthStore();
-  if (authStore.status === 'idle') {
+  if (authStore.status === 'idle' || authStore.status === 'loading') {
     await authStore.fetchMe();
   }
   if (authStore.status !== 'authenticated') {

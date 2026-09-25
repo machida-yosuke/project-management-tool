@@ -11,6 +11,7 @@ type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
 interface AuthState {
   user: AuthUser | null;
   status: AuthStatus;
+  fetchMePromise: Promise<void> | null;
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
@@ -19,23 +20,32 @@ export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     user: null,
     status: 'idle',
+    fetchMePromise: null,
   }),
   actions: {
-    async fetchMe() {
+    fetchMe() {
+      if (this.fetchMePromise) {
+        return this.fetchMePromise;
+      }
       this.status = 'loading';
-      try {
-        const res = await fetch(`${apiBaseUrl}/api/auth/me`, { credentials: 'include' });
-        if (res.ok) {
-          this.user = (await res.json()) as AuthUser;
-          this.status = 'authenticated';
-        } else {
+      this.fetchMePromise = (async () => {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/auth/me`, { credentials: 'include' });
+          if (res.ok) {
+            this.user = (await res.json()) as AuthUser;
+            this.status = 'authenticated';
+          } else {
+            this.user = null;
+            this.status = 'unauthenticated';
+          }
+        } catch {
           this.user = null;
           this.status = 'unauthenticated';
+        } finally {
+          this.fetchMePromise = null;
         }
-      } catch {
-        this.user = null;
-        this.status = 'unauthenticated';
-      }
+      })();
+      return this.fetchMePromise;
     },
     async logout() {
       try {
