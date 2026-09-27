@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { validateRedirectPath } from '@pm-tool/shared';
 
 const route = useRoute();
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'https://localhost:8787';
 
 const loginUrl = computed(() => {
   const redirectParam = route.query.redirect;

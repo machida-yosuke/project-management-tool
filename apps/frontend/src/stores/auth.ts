@@ -14,7 +14,7 @@ interface AuthState {
   fetchMePromise: Promise<void> | null;
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8787';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'https://localhost:8787';
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({

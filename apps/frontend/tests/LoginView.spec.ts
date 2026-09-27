@@ -18,7 +18,7 @@ describe('LoginView', () => {
     const wrapper = await mountAtLoginPath('/login?redirect=/projects/1');
 
     expect(wrapper.get('a').attributes('href')).toBe(
-      'http://localhost:8787/api/auth/google?redirect=%2Fprojects%2F1',
+      'https://localhost:8787/api/auth/google?redirect=%2Fprojects%2F1',
     );
   });
 
@@ -26,7 +26,7 @@ describe('LoginView', () => {
     const wrapper = await mountAtLoginPath('/login?redirect=https://evil.com');
 
     expect(wrapper.get('a').attributes('href')).toBe(
-      'http://localhost:8787/api/auth/google?redirect=%2F',
+      'https://localhost:8787/api/auth/google?redirect=%2F',
     );
   });
 
@@ -34,7 +34,7 @@ describe('LoginView', () => {
     const wrapper = await mountAtLoginPath('/login');
 
     expect(wrapper.get('a').attributes('href')).toBe(
-      'http://localhost:8787/api/auth/google?redirect=%2F',
+      'https://localhost:8787/api/auth/google?redirect=%2F',
     );
   });
 });
