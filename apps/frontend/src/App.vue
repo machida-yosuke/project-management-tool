@@ -13,6 +13,9 @@ onMounted(() => {
 
 <template>
   <h1>Project Management Tool</h1>
+  <nav>
+    <router-link to="/">ホーム</router-link>
+  </nav>
   <div v-if="authStore.status === 'authenticated'">
     <span>{{ authStore.user?.name }}</span>
     <button type="button" @click="authStore.logout()">ログアウト</button>

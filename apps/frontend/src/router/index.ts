@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
+import ProjectMembersView from '../views/ProjectMembersView.vue';
+import ProjectView from '../views/ProjectView.vue';
 import { requireAuthGuard } from './guards';
 
 export const router = createRouter({
@@ -8,6 +10,18 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView, meta: { requiresAuth: true } },
     { path: '/login', name: 'login', component: LoginView },
+    {
+      path: '/projects/:projectId',
+      name: 'project',
+      component: ProjectView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/members',
+      name: 'project-members',
+      component: ProjectMembersView,
+      meta: { requiresAuth: true },
+    },
   ],
 });
 
