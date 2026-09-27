@@ -7,5 +7,5 @@ cd apps/e2e
 pnpm create playwright
 ```
 
-Target the local dev servers (`http://localhost:5173` frontend, `https://localhost:8787` backend),
+Target the local dev servers (`https://localhost:5173` frontend, `https://localhost:8787` backend),
 started via `pnpm dev` from the repo root.

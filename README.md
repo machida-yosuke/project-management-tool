@@ -41,12 +41,14 @@ pnpm db:migrate:local    # apply migrations to the local D1 emulation
 ## Local development
 
 ```bash
-pnpm dev   # run frontend (http://localhost:5173) and backend (https://localhost:8787)
+pnpm dev   # run frontend (https://localhost:5173) and backend (https://localhost:8787)
 ```
 
 The backend always runs over HTTPS — `@hono/oauth-providers`'s internal `state` cookie is always `Secure`, which browsers silently drop over plain HTTP.
 
-Open `https://localhost:8787/health` once and accept the self-signed certificate warning before logging in. The redirect URI registered in Google Cloud Console must match (`https://localhost:8787/api/auth/google`).
+The frontend also runs over HTTPS (`@vitejs/plugin-basic-ssl`): Chrome treats `http://localhost` and `https://localhost` as different sites, so the `SameSite=Lax` session cookie would not be sent to the backend otherwise.
+
+Open `https://localhost:8787/health` and `https://localhost:5173` once and accept the self-signed certificate warnings before logging in. The redirect URI registered in Google Cloud Console must match (`https://localhost:8787/api/auth/google`).
 
 ## Common commands
 
