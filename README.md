@@ -135,6 +135,21 @@ There are two environments, `staging` and `production`. The frontend Worker is p
 
 > The frontend and backend run on different hosts, but both live under the same `<account>.workers.dev`, so the browser still sends the `SameSite=Lax` session cookie. Putting them on separate custom domains (different sites) will break login.
 
+## Rate limiting
+
+The backend limits every request (including `/health`) per client IP (`cf-connecting-ip`) to 100 requests per minute using a Workers Rate Limiting binding. The 101st request adds a strike:
+
+- Strikes 1–3: banned for 24 hours. Responds `429 { "error": "rate_limited" }` with `Retry-After`.
+- Strike 4 and later: banned permanently. Responds `403 { "error": "ip_banned" }`.
+
+Strikes never reset automatically. State lives in the `CACHE` KV under `ratelimit:ban:<IP>`; delete that key to lift a ban.
+
+```bash
+wrangler kv key delete --binding CACHE --env production "ratelimit:ban:<IP>"
+```
+
+Requests without `cf-connecting-ip` or from loopback (local dev, tests) are not limited.
+
 ## Directory structure
 
 ```

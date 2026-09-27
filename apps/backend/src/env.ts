@@ -1,10 +1,11 @@
-import type { D1Database, KVNamespace, R2Bucket } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, R2Bucket, RateLimit } from '@cloudflare/workers-types';
 
 export interface Env {
   DB: D1Database;
   SESSIONS: KVNamespace;
   CACHE: KVNamespace;
   ATTACHMENTS: R2Bucket;
+  API_RATE_LIMITER: RateLimit;
   FRONTEND_URL: string;
   GOOGLE_ID: string;
   GOOGLE_SECRET: string;

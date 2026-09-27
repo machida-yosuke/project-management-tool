@@ -9,6 +9,7 @@ import { invitationsRoute, projectInvitationsRoute } from './routes/invitations'
 import { tasksRoute } from './routes/tasks';
 import { commentsRoute } from './routes/comments';
 import { requireAuth } from './middleware/require-auth';
+import { rateLimit } from './middleware/rate-limit';
 import type { Env } from './env';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -20,6 +21,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use('*', rateLimit);
 
 app.route('/health', healthRoute);
 app.route('/api/auth/google', googleAuthRoute);
