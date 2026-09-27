@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { canEdit, type Task } from '@pm-tool/shared';
+import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
 import { useMembersStore } from '../stores/members';
@@ -164,6 +165,12 @@ function formatDate(iso: string) {
                 <button v-if="editable" type="button" @click="deleteTask(task)">削除</button>
               </div>
               <div class="task-meta">
+                <UserAvatar
+                  v-if="task.assignee"
+                  :name="task.assignee.name"
+                  :avatar-url="task.assignee.avatarUrl"
+                  :size="20"
+                />
                 <label v-if="editable">
                   担当:
                   <select
@@ -182,6 +189,11 @@ function formatDate(iso: string) {
                   </select>
                 </label>
                 <span v-else>担当: {{ task.assignee?.name ?? '未割り当て' }}</span>
+                <UserAvatar
+                  :name="task.createdBy.name"
+                  :avatar-url="task.createdBy.avatarUrl"
+                  :size="20"
+                />
                 <span class="muted">作成: {{ task.createdBy.name }}</span>
               </div>
             </li>
@@ -197,7 +209,12 @@ function formatDate(iso: string) {
             <p v-if="tasksStore.comments.length === 0" class="muted">コメントはありません</p>
             <ul class="comment-list">
               <li v-for="comment in tasksStore.comments" :key="comment.id" data-testid="comment">
-                <div class="muted">
+                <div class="comment-meta muted">
+                  <UserAvatar
+                    :name="comment.author.name"
+                    :avatar-url="comment.author.avatarUrl"
+                    :size="20"
+                  />
                   {{ comment.author.name }} ・ {{ formatDate(comment.createdAt) }}
                 </div>
                 <div class="comment-body">{{ comment.body }}</div>
@@ -273,6 +290,7 @@ function formatDate(iso: string) {
 
 .task-row,
 .task-meta,
+.comment-meta,
 .inline-form {
   display: flex;
   align-items: center;

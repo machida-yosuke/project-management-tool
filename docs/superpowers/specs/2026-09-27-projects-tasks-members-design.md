@@ -157,6 +157,43 @@ DB アクセスは `src/projects/*.ts`（`projects.ts`, `members.ts`, `invitatio
 - 判定には `@pm-tool/shared` の `canEdit` / `canManageMembers` を使う
 - `App.vue` にホームへのリンクを置く
 
+## ユーザー設定
+
+ログインユーザーが表示名の変更、アバターの設定・削除、退会を行える。
+
+### 認証の真実源
+
+`requireAuth` は KV のセッションからユーザー id だけを取り出し、D1 から `deleted_at IS NULL` のユーザーを毎回読む。見つからなければセッションを破棄して `401 { error: 'unauthorized' }`。これで名前変更が即時に反映され、退会すると他端末のセッションも使えなくなる。`c.get('user')` と `GET /api/auth/me` は `{ id, email, name, avatarUrl }` を返す。
+
+### スキーマ
+
+`users` に `avatar_key text NULL`（R2 のキー）と `deleted_at integer(timestamp_ms) NULL` を追加する。
+
+### API（すべて `requireAuth` 配下）
+
+- `PATCH /api/me` `{ name }`（trim 後 1〜100 文字）→ ユーザー
+- `PUT /api/me/avatar` multipart の `file` → ユーザー。`image/png` / `image/jpeg` / `image/webp` のみ（それ以外は `400 { error: 'unsupported_media_type' }`、`file` がなければ `400 { error: 'file_required' }`）。100KB 超は `413 { error: 'payload_too_large' }`。ヘッダから読んだ幅か高さが 256px 超、またはヘッダを判別できなければ `400 { error: 'image_too_large' }`。R2 キーは `avatars/<userId>/<uuid>` で、DB を更新してから旧オブジェクトを削除する
+- `DELETE /api/me/avatar` → ユーザー（`avatarUrl: null`）
+- `DELETE /api/me` → `204`、Cookie 削除。自分が owner で他メンバーのいるプロジェクトがあれば `409 { error: 'owned_projects_have_members', projects: [{ id, name }] }`
+- `GET /api/avatars/:userId/:fileId` → 画像。`Cache-Control: private, max-age=31536000, immutable`、`X-Content-Type-Options: nosniff`。アップロードごとにキーが変わるので同じ URL の中身は変わらない
+
+アバターは frontend が 128×128 の webp / jpeg にリサイズしてから送る前提で、backend の上限はその余裕を持たせた値にしている。
+
+`UserSummary` と `ProjectMember` は `avatarUrl: string | null` を持つ。値は `/api/avatars/<userId>/<fileId>` のパスで、frontend が API のベース URL を前置する。`<img>` による取得は frontend と backend が same-site である前提（セッション Cookie と同じく `SameSite=Lax`）で Cookie が付く。
+
+### 退会
+
+1. 自分が owner で他メンバーのいるプロジェクトがあれば 409 で拒否する。先に削除してもらう
+2. 1 回の batch で以下を行う
+   - 自分しかメンバーのいないプロジェクトを削除（cascade でタスク・コメント・招待も消える）
+   - 自分の membership を削除し、担当タスクを担当なしに戻す
+   - users 行を匿名化する: `name = '退会したユーザー'`、`email = 'deleted-<id>@deleted.invalid'`、`avatar_key = NULL`、`deleted_at = now`
+3. R2 のアバターを best-effort で削除し、現在のセッションを破棄する
+
+users 行は削除しない。`tasks.created_by` / `task_comments.user_id` / `project_invitations.invited_by` が cascade なしで参照しており、退会者の TODO・コメントは「退会したユーザー」として残す。
+
+メールを匿名化するので、同じ Google アカウントで再ログインすると別 id の新規ユーザーになる。退会前の旧メール宛て招待（期限内のもの）は新しいアカウントからも見え、受諾できる。
+
 ## テスト方針
 
 - backend: `SELF.fetch` による統合テストを各ルートファイルに対応して `tests/projects/*.spec.ts` に置く。セッションは `createSession(env.SESSIONS, user)` で発行して Cookie を付ける。権限境界（substaff の書き込み拒否、非メンバーの 404、owner の不変性、暗証番号の不一致・ロック・期限切れ）を必ずカバーする

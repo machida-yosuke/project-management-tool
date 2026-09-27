@@ -2,8 +2,9 @@ import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Task, TaskStatus } from '@pm-tool/shared';
+import type { Task, TaskStatus, UserSummary } from '@pm-tool/shared';
 import { tasks, users } from '../db/schema';
+import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 import { isMember } from './members';
 
@@ -14,8 +15,18 @@ function taskQuery(db: D1Database) {
   return drizzle(db)
     .select({
       task: tasks,
-      assignee: { id: assignee.id, email: assignee.email, name: assignee.name },
-      createdBy: { id: creator.id, email: creator.email, name: creator.name },
+      assignee: {
+        id: assignee.id,
+        email: assignee.email,
+        name: assignee.name,
+        avatarKey: assignee.avatarKey,
+      },
+      createdBy: {
+        id: creator.id,
+        email: creator.email,
+        name: creator.name,
+        avatarKey: creator.avatarKey,
+      },
     })
     .from(tasks)
     .leftJoin(assignee, eq(assignee.id, tasks.assigneeId))
@@ -24,6 +35,15 @@ function taskQuery(db: D1Database) {
 
 type TaskRow = Awaited<ReturnType<ReturnType<typeof taskQuery>['all']>>[number];
 
+function toUserSummary(user: TaskRow['createdBy']): UserSummary {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: avatarUrlFor(user.avatarKey),
+  };
+}
+
 function toTask(row: TaskRow): Task {
   return {
     id: row.task.id,
@@ -31,8 +51,8 @@ function toTask(row: TaskRow): Task {
     title: row.task.title,
     description: row.task.description,
     status: row.task.status,
-    assignee: row.assignee,
-    createdBy: row.createdBy,
+    assignee: row.assignee && toUserSummary(row.assignee),
+    createdBy: toUserSummary(row.createdBy),
     createdAt: row.task.createdAt.toISOString(),
     updatedAt: row.task.updatedAt.toISOString(),
   };

@@ -1,12 +1,17 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import { users } from '../db/schema';
+import { avatarUrlFor } from '../users/avatar';
 
 export interface UserRecord {
   id: string;
   email: string;
   name: string;
+}
+
+export interface AuthUser extends UserRecord {
+  avatarUrl: string | null;
 }
 
 export async function upsertUserByEmail(
@@ -28,4 +33,14 @@ export async function upsertUserByEmail(
     createdAt: new Date(),
   });
   return { id, email: profile.email, name: profile.name };
+}
+
+export async function findActiveUserById(db: D1Database, id: string): Promise<AuthUser | null> {
+  const rows = await drizzle(db)
+    .select({ id: users.id, email: users.email, name: users.name, avatarKey: users.avatarKey })
+    .from(users)
+    .where(and(eq(users.id, id), isNull(users.deletedAt)));
+  const row = rows[0];
+  if (!row) return null;
+  return { id: row.id, email: row.email, name: row.name, avatarUrl: avatarUrlFor(row.avatarKey) };
 }

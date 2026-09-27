@@ -3,8 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import type { Component } from 'vue';
 import HomeView from '../../src/views/HomeView.vue';
+import LoginView from '../../src/views/LoginView.vue';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
 import ProjectView from '../../src/views/ProjectView.vue';
+import SettingsView from '../../src/views/SettingsView.vue';
 import { useAuthStore } from '../../src/stores/auth';
 import type { UserSummary } from '@pm-tool/shared';
 
@@ -19,6 +21,8 @@ export async function mountAt(component: Component, path: string, currentUser: U
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'home', component: HomeView },
+      { path: '/login', name: 'login', component: LoginView },
+      { path: '/settings', name: 'settings', component: SettingsView },
       { path: '/projects/:projectId', name: 'project', component: ProjectView },
       {
         path: '/projects/:projectId/members',

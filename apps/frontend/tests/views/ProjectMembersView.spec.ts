@@ -14,7 +14,12 @@ import {
 } from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
 
-const carol: UserSummary = { id: 'u-carol', email: 'carol@example.com', name: 'Carol' };
+const carol: UserSummary = {
+  id: 'u-carol',
+  email: 'carol@example.com',
+  name: 'Carol',
+  avatarUrl: null,
+};
 
 const members = [
   makeMember(alice, { role: 'admin', isOwner: true }),

@@ -37,7 +37,7 @@ describe('requireAuthGuard', () => {
   it('allows navigation when already authenticated', async () => {
     const authStore = useAuthStore();
     authStore.status = 'authenticated';
-    authStore.user = { id: '1', email: 'a@example.com', name: 'A' };
+    authStore.user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
 
     const result = await requireAuthGuard(makeRoute('/', true), makeRoute('/', true));
 
@@ -50,7 +50,7 @@ describe('requireAuthGuard', () => {
     // must await that SAME in-flight request rather than immediately falling through
     // to the `status !== 'authenticated'` check and bouncing an authenticated user
     // to /login.
-    const user = { id: '1', email: 'a@example.com', name: 'A' };
+    const user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
     let resolveFetch!: (value: Response) => void;
     const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;

@@ -3,6 +3,7 @@ import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Project, ProjectInvitation, ProjectRole } from '@pm-tool/shared';
 import { projectInvitations, projectMembers, projects, users } from '../db/schema';
+import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 import { hashPasscode, verifyPasscode } from './passcode';
 import { getProject } from './projects';
@@ -21,6 +22,7 @@ function invitationQuery(db: D1Database) {
       inviterId: users.id,
       inviterEmail: users.email,
       inviterName: users.name,
+      inviterAvatarKey: users.avatarKey,
       expiresAt: projectInvitations.expiresAt,
       createdAt: projectInvitations.createdAt,
     })
@@ -38,7 +40,12 @@ function toInvitation(row: InvitationRow): ProjectInvitation {
     projectName: row.projectName,
     email: row.email,
     role: row.role,
-    invitedBy: { id: row.inviterId, email: row.inviterEmail, name: row.inviterName },
+    invitedBy: {
+      id: row.inviterId,
+      email: row.inviterEmail,
+      name: row.inviterName,
+      avatarUrl: avatarUrlFor(row.inviterAvatarKey),
+    },
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };

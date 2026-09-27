@@ -7,6 +7,7 @@ import {
   type ProjectMember,
   type ProjectRole,
 } from '@pm-tool/shared';
+import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
 import { ROLE_LABELS } from '../lib/roles';
@@ -144,8 +145,11 @@ function formatDate(iso: string) {
         <tbody>
           <tr v-for="member in membersStore.members" :key="member.userId" data-testid="member">
             <td>
-              {{ member.name }}
-              <span v-if="member.isOwner" class="muted">（オーナー）</span>
+              <span class="name-cell">
+                <UserAvatar :name="member.name" :avatar-url="member.avatarUrl" />
+                {{ member.name }}
+                <span v-if="member.isOwner" class="muted">（オーナー）</span>
+              </span>
             </td>
             <td>{{ member.email }}</td>
             <td>
@@ -240,6 +244,12 @@ function formatDate(iso: string) {
   padding: 6px 12px;
   border-bottom: 1px solid #ddd;
   text-align: left;
+}
+
+.name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .inline-form {

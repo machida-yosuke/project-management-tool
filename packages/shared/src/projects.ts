@@ -8,6 +8,7 @@ export interface UserSummary {
   id: string;
   email: string;
   name: string;
+  avatarUrl: string | null;
 }
 
 export interface Project {
@@ -23,6 +24,7 @@ export interface ProjectMember {
   userId: string;
   email: string;
   name: string;
+  avatarUrl: string | null;
   role: ProjectRole;
   isOwner: boolean;
   createdAt: string;
@@ -61,6 +63,11 @@ export interface TaskComment {
 
 export interface ApiError {
   error: string;
+}
+
+export interface AccountDeletionBlocked {
+  error: 'owned_projects_have_members';
+  projects: { id: string; name: string }[];
 }
 
 export function canEdit(role: ProjectRole): boolean {

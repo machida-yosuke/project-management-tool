@@ -8,6 +8,8 @@ import { membersRoute } from './routes/members';
 import { invitationsRoute, projectInvitationsRoute } from './routes/invitations';
 import { tasksRoute } from './routes/tasks';
 import { commentsRoute } from './routes/comments';
+import { meRoute } from './routes/me';
+import { avatarsRoute } from './routes/avatars';
 import { requireAuth } from './middleware/require-auth';
 import { rateLimit } from './middleware/rate-limit';
 import type { Env } from './env';
@@ -29,12 +31,16 @@ app.route('/api/auth', authSessionRoute);
 
 app.use('/api/projects/*', requireAuth);
 app.use('/api/invitations/*', requireAuth);
+app.use('/api/me/*', requireAuth);
+app.use('/api/avatars/*', requireAuth);
 app.route('/api/projects/:projectId/tasks/:taskId/comments', commentsRoute);
 app.route('/api/projects/:projectId/tasks', tasksRoute);
 app.route('/api/projects/:projectId/members', membersRoute);
 app.route('/api/projects/:projectId/invitations', projectInvitationsRoute);
 app.route('/api/projects', projectsRoute);
 app.route('/api/invitations', invitationsRoute);
+app.route('/api/me', meRoute);
+app.route('/api/avatars', avatarsRoute);
 
 export type AppType = typeof app;
 export default app;

@@ -3,6 +3,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { ProjectMember, ProjectRole } from '@pm-tool/shared';
 import { projectMembers, projects, tasks, users } from '../db/schema';
+import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 
 function memberQuery(db: D1Database) {
@@ -11,6 +12,7 @@ function memberQuery(db: D1Database) {
       userId: projectMembers.userId,
       email: users.email,
       name: users.name,
+      avatarKey: users.avatarKey,
       role: projectMembers.role,
       ownerId: projects.ownerId,
       createdAt: projectMembers.createdAt,
@@ -27,6 +29,7 @@ function toMember(row: MemberRow): ProjectMember {
     userId: row.userId,
     email: row.email,
     name: row.name,
+    avatarUrl: avatarUrlFor(row.avatarKey),
     role: row.role,
     isOwner: row.ownerId === row.userId,
     createdAt: row.createdAt.toISOString(),

@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import ProjectMembersView from '../views/ProjectMembersView.vue';
 import ProjectView from '../views/ProjectView.vue';
+import SettingsView from '../views/SettingsView.vue';
 import { requireAuthGuard } from './guards';
 
 export const router = createRouter({
@@ -22,6 +23,7 @@ export const router = createRouter({
       component: ProjectMembersView,
       meta: { requiresAuth: true },
     },
+    { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
   ],
 });
 

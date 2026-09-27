@@ -1,18 +1,11 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
-import type { Env } from '../../env';
-import { destroySession, getSessionUser } from '../../auth/session';
+import { destroySession } from '../../auth/session';
+import { requireAuth, type AuthEnv } from '../../middleware/require-auth';
 
-export const authSessionRoute = new Hono<{ Bindings: Env }>();
+export const authSessionRoute = new Hono<AuthEnv>();
 
-authSessionRoute.get('/me', async (c) => {
-  const sessionId = getCookie(c, 'session_id');
-  const user = await getSessionUser(c.env.SESSIONS, sessionId);
-  if (!user) {
-    return c.json({ error: 'unauthorized' }, 401);
-  }
-  return c.json(user);
-});
+authSessionRoute.get('/me', requireAuth, (c) => c.json(c.get('user')));
 
 authSessionRoute.post('/logout', async (c) => {
   const sessionId = getCookie(c, 'session_id');

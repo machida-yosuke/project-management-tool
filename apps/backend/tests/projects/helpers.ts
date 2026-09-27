@@ -22,6 +22,14 @@ export function api(
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (user) headers.cookie = user.cookie;
+  // FormData must set its own multipart content-type, boundary included.
+  if (init.body instanceof FormData) {
+    return SELF.fetch(`http://example.com${path}`, {
+      method: init.method ?? 'GET',
+      headers,
+      body: init.body,
+    });
+  }
   if (init.body !== undefined) headers['content-type'] = 'application/json';
   return SELF.fetch(`http://example.com${path}`, {
     method: init.method ?? 'GET',

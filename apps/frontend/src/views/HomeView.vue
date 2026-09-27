@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import UserAvatar from '../components/UserAvatar.vue';
 import { errorMessage } from '../lib/api';
 import { ROLE_LABELS } from '../lib/roles';
 import { useInvitationsStore } from '../stores/invitations';
@@ -87,7 +88,15 @@ async function acceptInvitation(invitationId: string) {
           <div>
             <strong>{{ invitation.projectName }}</strong>
             <span>（{{ ROLE_LABELS[invitation.role] }}）</span>
-            <span>招待者: {{ invitation.invitedBy.name }}</span>
+            <span class="inviter">
+              招待者:
+              <UserAvatar
+                :name="invitation.invitedBy.name"
+                :avatar-url="invitation.invitedBy.avatarUrl"
+                :size="20"
+              />
+              {{ invitation.invitedBy.name }}
+            </span>
           </div>
           <form class="inline-form" @submit.prevent="acceptInvitation(invitation.id)">
             <input
@@ -167,6 +176,13 @@ async function acceptInvitation(invitationId: string) {
   flex-direction: column;
   gap: 8px;
   max-width: 480px;
+}
+
+.inviter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
 }
 
 .muted {

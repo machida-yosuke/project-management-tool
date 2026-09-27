@@ -3,13 +3,19 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { TaskComment } from '@pm-tool/shared';
 import { taskComments, tasks, users } from '../db/schema';
+import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 
 function commentQuery(db: D1Database) {
   return drizzle(db)
     .select({
       comment: taskComments,
-      author: { id: users.id, email: users.email, name: users.name },
+      author: {
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        avatarKey: users.avatarKey,
+      },
     })
     .from(taskComments)
     .innerJoin(users, eq(users.id, taskComments.userId));
@@ -21,7 +27,12 @@ function toComment(row: CommentRow): TaskComment {
   return {
     id: row.comment.id,
     taskId: row.comment.taskId,
-    author: row.author,
+    author: {
+      id: row.author.id,
+      email: row.author.email,
+      name: row.author.name,
+      avatarUrl: avatarUrlFor(row.author.avatarKey),
+    },
     body: row.comment.body,
     createdAt: row.comment.createdAt.toISOString(),
   };

@@ -42,6 +42,19 @@ describe('apiFetch', () => {
     expect(new Headers(init.headers).has('Content-Type')).toBe(false);
   });
 
+  it('passes FormData bodies through without a JSON Content-Type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({}));
+    vi.stubGlobal('fetch', fetchMock);
+    const form = new FormData();
+    form.append('file', new File(['x'], 'x.png', { type: 'image/png' }));
+
+    await apiFetch('/api/me/avatar', { method: 'PUT', body: form });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(form);
+    expect(new Headers(init.headers).has('Content-Type')).toBe(false);
+  });
+
   it('returns undefined for 204 responses', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(noContent()));
 
@@ -57,6 +70,17 @@ describe('apiFetch', () => {
     expect(error).toMatchObject({ status: 403, error: 'forbidden' });
   });
 
+  it('exposes the parsed error body as details', async () => {
+    const body = { error: 'owned_projects_have_members', projects: [{ id: 'p1', name: 'P' }] };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(body, 409)));
+
+    await expect(apiFetch('/api/me', { method: 'DELETE' })).rejects.toMatchObject({
+      status: 409,
+      error: 'owned_projects_have_members',
+      details: body,
+    });
+  });
+
   it('uses a generic error code when the error body is not JSON', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>', { status: 502 })));
 
@@ -70,7 +94,7 @@ describe('apiFetch', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: 'unauthorized' }, 401)));
     const authStore = useAuthStore();
     authStore.status = 'authenticated';
-    authStore.user = { id: '1', email: 'a@example.com', name: 'A' };
+    authStore.user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
 
     await expect(apiFetch('/api/projects')).rejects.toMatchObject({ status: 401 });
 

@@ -32,6 +32,7 @@ describe('tasks routes', () => {
       id: substaff.id,
       email: substaff.email,
       name: substaff.name,
+      avatarUrl: null,
     });
 
     const listed = await json<Task[]>(await api(substaff, base));

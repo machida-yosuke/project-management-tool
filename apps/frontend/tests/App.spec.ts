@@ -26,10 +26,11 @@ describe('App', () => {
 
     const authStore = useAuthStore(pinia);
     authStore.status = 'authenticated';
-    authStore.user = { id: '1', email: 'a@example.com', name: 'Test User' };
+    authStore.user = { id: '1', email: 'a@example.com', name: 'Test User', avatarUrl: null };
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('Test User');
     expect(wrapper.find('button').exists()).toBe(true);
+    expect(wrapper.get('a[href="/settings"]').text()).toBe('設定');
   });
 });

@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
     "types": ["vite/client"],
     "plugins": [{ "name": "@vue/typescript-plugin" }]

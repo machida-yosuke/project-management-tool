@@ -28,15 +28,31 @@ export function stubApi(routes: Record<string, Handler | Response>) {
     if (route instanceof Response) {
       return route.clone();
     }
-    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+    const rawBody = init?.body;
+    const body =
+      typeof rawBody === 'string'
+        ? (JSON.parse(rawBody) as unknown)
+        : rawBody instanceof FormData
+          ? rawBody
+          : undefined;
     return route(body);
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
 
-export const alice: UserSummary = { id: 'u-alice', email: 'alice@example.com', name: 'Alice' };
-export const bob: UserSummary = { id: 'u-bob', email: 'bob@example.com', name: 'Bob' };
+export const alice: UserSummary = {
+  id: 'u-alice',
+  email: 'alice@example.com',
+  name: 'Alice',
+  avatarUrl: null,
+};
+export const bob: UserSummary = {
+  id: 'u-bob',
+  email: 'bob@example.com',
+  name: 'Bob',
+  avatarUrl: null,
+};
 
 export function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -73,6 +89,7 @@ export function makeMember(
     userId: user.id,
     email: user.email,
     name: user.name,
+    avatarUrl: user.avatarUrl,
     role: 'staff',
     isOwner: false,
     createdAt: '2026-09-01T00:00:00.000Z',
