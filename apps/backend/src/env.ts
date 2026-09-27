@@ -5,7 +5,6 @@ export interface Env {
   SESSIONS: KVNamespace;
   CACHE: KVNamespace;
   ATTACHMENTS: R2Bucket;
-  APP_ENV: string;
   FRONTEND_URL: string;
   GOOGLE_ID: string;
   GOOGLE_SECRET: string;

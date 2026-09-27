@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "typecheck": "vue-tsc --noEmit",
+    "build:staging": "vue-tsc --noEmit && vite build --mode staging",
+    "build:production": "vue-tsc --noEmit && vite build --mode production",
+    "typecheck": "vue-tsc --noEmit && tsc -p worker --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy": "wrangler deploy"
+    "deploy:staging": "pnpm build:staging && wrangler deploy --env staging",
+    "deploy:production": "pnpm build:production && wrangler deploy --env production"
   },
   "dependencies": {
     "@pm-tool/shared": "workspace:*",
@@ -20,6 +23,7 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260919.1",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vue/test-utils": "^2.4.0",
     "@vue/typescript-plugin": "^3.3.11",

@@ -28,7 +28,66 @@
     },
   ],
   "vars": {
-    "APP_ENV": "development",
     "FRONTEND_URL": "http://localhost:5173",
+  },
+  "env": {
+    "staging": {
+      "name": "pm-tool-backend-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "pm-tool-db-staging",
+          "database_id": "6af6ad4e-8041-4f04-bd29-d435942afd09",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS",
+          "id": "b023115682d04c399cdf8e8a31c9e4bd",
+        },
+        {
+          "binding": "CACHE",
+          "id": "2effdf7fc423456c9181256fffb0812b",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ATTACHMENTS",
+          "bucket_name": "pm-tool-attachments-staging",
+        },
+      ],
+      "vars": {
+        "FRONTEND_URL": "https://pm-tool-frontend-staging.web-app-dev.workers.dev",
+      },
+    },
+    "production": {
+      "name": "pm-tool-backend-production",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "pm-tool-db-production",
+          "database_id": "7f750182-86e2-4929-96bd-c4c952e843c3",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS",
+          "id": "d912f15757954764a8b1924b167c3b98",
+        },
+        {
+          "binding": "CACHE",
+          "id": "193a1744d1ec4ad3b4fbe5fac8ff0902",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ATTACHMENTS",
+          "bucket_name": "pm-tool-attachments-production",
+        },
+      ],
+      "vars": {
+        "FRONTEND_URL": "https://pm-tool-frontend-production.web-app-dev.workers.dev",
+      },
+    },
   },
 }

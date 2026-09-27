@@ -34,7 +34,7 @@ googleAuthRoute.get(
         httpOnly: true,
         path: '/',
         sameSite: 'Lax',
-        secure: c.env.APP_ENV === 'production',
+        secure: true,
       });
     }
     await next();
@@ -45,7 +45,7 @@ googleAuthRoute.get(
     deleteCookie(c, 'oauth_redirect', {
       path: '/',
       sameSite: 'Lax',
-      secure: c.env.APP_ENV === 'production',
+      secure: true,
     });
 
     const googleUser = c.get('user-google');
@@ -64,7 +64,7 @@ googleAuthRoute.get(
       httpOnly: true,
       path: '/',
       sameSite: 'Lax',
-      secure: c.env.APP_ENV === 'production',
+      secure: true,
     });
 
     return c.redirect(`${c.env.FRONTEND_URL}${redirectPath}`);

@@ -58,13 +58,80 @@ Open `https://localhost:8787/health` once and accept the self-signed certificate
 | `pnpm test` | Run unit tests (Vitest) |
 | `pnpm build` | Build all workspaces |
 | `pnpm --filter backend db:generate` | Generate a drizzle SQL migration |
+| `pnpm deploy:staging` | Deploy backend + frontend to staging |
+| `pnpm deploy:production` | Deploy backend + frontend to production |
 
 ## Deploy
 
-```bash
-pnpm --filter backend deploy
-pnpm --filter frontend deploy
-```
+There are two environments, `staging` and `production`. The frontend Worker is protected by Basic auth; the backend is not.
+
+1. Log in to Cloudflare.
+
+   ```bash
+   pnpm exec wrangler login
+   ```
+
+2. Create the resources for each environment, then paste the output IDs into the matching `env.staging` / `env.production` block of `apps/backend/wrangler.jsonc`. Also replace `REPLACE_ACCOUNT` in `FRONTEND_URL` with your workers.dev subdomain.
+
+   ```bash
+   cd apps/backend
+   pnpm exec wrangler d1 create pm-tool-db-staging
+   pnpm exec wrangler kv namespace create SESSIONS --env staging
+   pnpm exec wrangler kv namespace create CACHE --env staging
+   pnpm exec wrangler r2 bucket create pm-tool-attachments-staging
+
+   pnpm exec wrangler d1 create pm-tool-db-production
+   pnpm exec wrangler kv namespace create SESSIONS --env production
+   pnpm exec wrangler kv namespace create CACHE --env production
+   pnpm exec wrangler r2 bucket create pm-tool-attachments-production
+   ```
+
+3. Set the secrets.
+
+   ```bash
+   cd apps/backend
+   pnpm exec wrangler secret put GOOGLE_ID --env staging
+   pnpm exec wrangler secret put GOOGLE_SECRET --env staging
+   pnpm exec wrangler secret put GOOGLE_ID --env production
+   pnpm exec wrangler secret put GOOGLE_SECRET --env production
+
+   cd ../frontend
+   pnpm exec wrangler secret put BASIC_AUTH_USER --env staging
+   pnpm exec wrangler secret put BASIC_AUTH_PASSWORD --env staging
+   pnpm exec wrangler secret put BASIC_AUTH_USER --env production
+   pnpm exec wrangler secret put BASIC_AUTH_PASSWORD --env production
+   ```
+
+   The frontend Worker returns 503 until both `BASIC_AUTH_*` secrets are set.
+
+4. Create `apps/frontend/.env.staging` and `apps/frontend/.env.production`.
+
+   ```bash
+   # apps/frontend/.env.staging
+   VITE_API_BASE_URL=https://pm-tool-backend-staging.<account>.workers.dev
+   # apps/frontend/.env.production
+   VITE_API_BASE_URL=https://pm-tool-backend-production.<account>.workers.dev
+   ```
+
+5. Register these redirect URIs in Google Cloud Console:
+   - `https://pm-tool-backend-staging.<account>.workers.dev/api/auth/google`
+   - `https://pm-tool-backend-production.<account>.workers.dev/api/auth/google`
+
+6. Apply the D1 migrations.
+
+   ```bash
+   pnpm --filter backend db:migrate:staging
+   pnpm --filter backend db:migrate:production
+   ```
+
+7. Deploy (backend first, then frontend).
+
+   ```bash
+   pnpm deploy:staging
+   pnpm deploy:production
+   ```
+
+> The frontend and backend run on different hosts, but both live under the same `<account>.workers.dev`, so the browser still sends the `SameSite=Lax` session cookie. Putting them on separate custom domains (different sites) will break login.
 
 ## Directory structure
 

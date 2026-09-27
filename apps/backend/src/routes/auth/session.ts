@@ -20,7 +20,7 @@ authSessionRoute.post('/logout', async (c) => {
   deleteCookie(c, 'session_id', {
     path: '/',
     sameSite: 'Lax',
-    secure: c.env.APP_ENV === 'production',
+    secure: true,
   });
   return c.body(null, 204);
 });

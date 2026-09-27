@@ -4,6 +4,8 @@ coverage/
 .wrangler/
 .dev.vars
 .dev.vars.*
+.env.production
+.env.staging
 !.dev.vars.example
 *.log
 .DS_Store

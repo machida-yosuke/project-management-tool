@@ -13,8 +13,10 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply pm-tool-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply pm-tool-db --remote",
-    "deploy": "wrangler deploy"
+    "db:migrate:staging": "wrangler d1 migrations apply DB --remote --env staging",
+    "db:migrate:production": "wrangler d1 migrations apply DB --remote --env production",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production"
   },
   "dependencies": {
     "@hono/oauth-providers": "^0.8.8",
