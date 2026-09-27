@@ -1,0 +1,1411 @@
+openapi: 3.1.0
+info:
+  title: pm-tool backend API
+  version: 0.0.0
+  description: |
+    `apps/backend`（Hono on Cloudflare Workers）の HTTP API。実装から手書きで起こした定義で、コードからの自動生成ではない。
+
+    ## 認証
+    Google OAuth でログインすると、バックエンドが `session_id` Cookie（HttpOnly / Secure / SameSite=Lax / Path=/ / 7 日）を発行する。
+    セッション本体は KV に 7 日の TTL で保存される。認証が必要なルートは毎リクエスト D1 のユーザーを引き直すため、
+    退会済みユーザーのセッションは 401 になり、その場で破棄される。
+
+    認証が必要なのは `/api/projects/*`、`/api/invitations/*`、`/api/me/*`、`/api/avatars/*`、`GET /api/auth/me`。
+    未認証・セッション無効時は `401 {"error":"unauthorized"}` を返す。
+
+    ## CORS
+    `/api/*` のみ CORS を有効化している。許可オリジンは環境変数 `FRONTEND_URL` の 1 つだけで、`Access-Control-Allow-Credentials: true` を返す。
+    ブラウザからは `credentials: 'include'` で呼び出す前提。`/health` には CORS ヘッダーが付かない。
+
+    ## レートリミットと IP BAN
+    全ルート（`/health` を含む）に `cf-connecting-ip` 単位のレートリミットがかかる（60 秒あたり 100 リクエスト）。
+    `cf-connecting-ip` が無い、またはループバック（`127.0.0.1` / `::1`）の場合は制限しない（ローカル開発・テスト用）。
+
+    - 上限を超えると「ストライク」を 1 つ記録し、その IP を 24 時間 BAN する。応答は `429 {"error":"rate_limited"}` と `Retry-After`（秒）ヘッダー。
+    - BAN 中のリクエストも `429` と `Retry-After`（BAN 解除までの残り秒数）を返す。
+    - 直前のストライクから 60 秒以内の超過は同じストライクとして扱う。
+    - ストライクが 3 回を超える（4 回目）と永久 BAN になり、以後は `403 {"error":"ip_banned"}` を返す（`Retry-After` なし）。
+
+    ## 共通エラーレスポンス
+    アプリケーションが返すエラーは `{"error": "<code>"}` 形式の JSON。
+    リクエストのバリデーション（zod）に失敗した場合は `400 {"error":"validation_error","issues":[...]}` で、`issues` は zod の issue 配列そのもの。
+
+    例外として、以下は Hono / ミドルウェアの既定動作でプレーンテキストを返す。
+    - JSON ボディを受けるルートに `Content-Type: application/json` で不正な JSON を送った場合: `400 Malformed JSON in request body`
+    - `Content-Type` が JSON でない場合はボディを `{}` として検証するため、必須項目があるルートでは `validation_error` になる
+    - 存在しないルート: `404 404 Not Found`
+    - 未捕捉例外: `500 Internal Server Error`
+
+    ## 権限
+    プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
+    メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
+    - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
+    - 編集（プロジェクト更新・TODO 作成/更新/削除・コメント投稿）: `admin` / `staff`
+    - メンバー・招待の管理: `admin`
+    - プロジェクト削除: オーナーのみ
+servers:
+  - url: https://localhost:8787
+    description: ローカル（`wrangler dev --local-protocol https`。ポートは wrangler の既定値 8787 で、フロントの `apiBaseUrl` 既定値と一致）
+  - url: https://pm-tool-backend-staging.{account}.workers.dev
+    description: staging。Worker 名 `pm-tool-backend-staging` は wrangler.jsonc から取得。workers.dev サブドメインは設定ファイルに無いため変数にしている。
+    variables:
+      account:
+        default: web-app-dev
+        description: workers.dev のアカウントサブドメイン。既定値はフロントの `FRONTEND_URL` と同じサブドメインを仮置きしたもので、未確認。
+  - url: https://pm-tool-backend-production.{account}.workers.dev
+    description: production。Worker 名 `pm-tool-backend-production` は wrangler.jsonc から取得。workers.dev サブドメインは設定ファイルに無いため変数にしている。
+    variables:
+      account:
+        default: web-app-dev
+        description: workers.dev のアカウントサブドメイン。既定値はフロントの `FRONTEND_URL` と同じサブドメインを仮置きしたもので、未確認。
+security:
+  - sessionCookie: []
+tags:
+  - name: health
+    description: 死活監視
+  - name: auth
+    description: Google OAuth ログインとセッション
+  - name: projects
+    description: プロジェクト
+  - name: tasks
+    description: プロジェクト内の TODO
+  - name: comments
+    description: TODO のスレッド（コメント）
+  - name: members
+    description: プロジェクトメンバー
+  - name: invitations
+    description: プロジェクトへの招待
+  - name: me
+    description: ログイン中ユーザーのアカウント設定
+  - name: avatars
+    description: アバター画像の配信
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: ヘルスチェック
+      tags: [health]
+      security: []
+      responses:
+        '200':
+          description: 稼働中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/google:
+    get:
+      operationId: googleAuth
+      summary: Google OAuth ログイン（開始とコールバック）
+      description: |
+        1 つのルートで OAuth の往復両方を処理する。ブラウザで直接遷移させて使う（fetch では使わない）。
+
+        1. `code` なしで呼ぶと開始扱い。`redirect` クエリを検証して `oauth_redirect` Cookie（5 分）に保存し、
+           CSRF 対策の `state` Cookie（10 分）を発行して Google の同意画面へ 302 リダイレクトする。
+           スコープは `openid email profile`。
+        2. Google がこのルートに `code` と `state` を付けてコールバックする。`state` を Cookie と照合し、code をトークンに交換してユーザー情報を取得する。
+        3. メールアドレスが無いか未検証なら `{FRONTEND_URL}/login?error=oauth_failed` へ 302。
+        4. 成功時はメールアドレスでユーザーを作成または取得し、セッションを作って `session_id` Cookie を発行し、
+           `{FRONTEND_URL}{oauth_redirect}` へ 302。`oauth_redirect` Cookie は削除する。
+      tags: [auth]
+      security: []
+      parameters:
+        - name: redirect
+          in: query
+          required: false
+          description: ログイン後にフロントで遷移するパス。`/` で始まらない値、`//` や `/\` で始まる値は `/` に置き換える（オープンリダイレクト対策）。開始時のみ参照する。
+          schema:
+            type: string
+            examples: ['/projects/123']
+        - name: code
+          in: query
+          required: false
+          description: Google がコールバック時に付与する認可コード。これがあるとコールバックとして処理する。
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: Google がコールバック時に付与する state。`state` Cookie と一致しなければ 401。
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Google の同意画面、またはフロントエンドへのリダイレクト
+          headers:
+            Location:
+              description: リダイレクト先 URL
+              schema:
+                type: string
+            Set-Cookie:
+              description: 開始時は `oauth_redirect` と `state`、成功時は `session_id`
+              schema:
+                type: string
+        '400':
+          description: Google とのトークン交換・ユーザー情報取得の失敗（`@hono/oauth-providers` の既定動作。プレーンテキスト）
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: コールバックの `state` が Cookie と一致しない（`@hono/oauth-providers` の既定動作。プレーンテキスト `Unauthorized`）
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/me:
+    get:
+      operationId: getSessionUser
+      summary: ログイン中のユーザーを取得する
+      tags: [auth]
+      responses:
+        '200':
+          description: ログイン中のユーザー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: ログアウトする
+      description: '`session_id` Cookie があればそのセッションを破棄し、Cookie を削除する。Cookie が無くても 204 を返す。'
+      tags: [auth]
+      security:
+        - {}
+        - sessionCookie: []
+      responses:
+        '204':
+          description: ログアウト完了
+          headers:
+            Set-Cookie:
+              description: '`session_id` の削除'
+              schema:
+                type: string
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects:
+    get:
+      operationId: listProjects
+      summary: 自分が所属するプロジェクトの一覧を取得する
+      description: 作成日時の昇順。`role` は自分のロール。
+      tags: [projects]
+      responses:
+        '200':
+          description: プロジェクト一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createProject
+      summary: プロジェクトを作成する
+      description: 作成者がオーナーかつ `admin` メンバーになる。
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: 作成したプロジェクト（`role` は `admin`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getProject
+      summary: プロジェクトを取得する
+      description: 全ロールが閲覧できる。
+      tags: [projects]
+      responses:
+        '200':
+          description: プロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    patch:
+      operationId: updateProject
+      summary: プロジェクトを更新する
+      description: '`admin` / `staff` のみ。指定したフィールドだけ更新する。'
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: 更新後のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteProject
+      summary: プロジェクトを削除する
+      description: オーナーのみ。メンバー・招待・TODO・コメントもカスケード削除される。
+      tags: [projects]
+      responses:
+        '204':
+          description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/tasks:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listTasks
+      summary: TODO の一覧を取得する
+      description: 全ロールが閲覧できる。作成日時の昇順。
+      tags: [tasks]
+      responses:
+        '200':
+          description: TODO 一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createTask
+      summary: TODO を作成する
+      description: '`admin` / `staff` のみ。`status` は `open` で作成される。'
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: 作成した TODO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: |
+            - `validation_error`: 入力が不正
+            - `assignee_not_member`: `assigneeId` がプロジェクトのメンバーでない
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                assigneeNotMember:
+                  value: { error: assignee_not_member }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/tasks/{taskId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/TaskId'
+    patch:
+      operationId: updateTask
+      summary: TODO を更新する
+      description: '`admin` / `staff` のみ。指定したフィールドだけ更新し、`updatedAt` は常に更新される。'
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: 更新後の TODO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: |
+            - `validation_error`: 入力が不正
+            - `assignee_not_member`: `assigneeId` がプロジェクトのメンバーでない
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                assigneeNotMember:
+                  value: { error: assignee_not_member }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteTask
+      summary: TODO を削除する
+      description: '`admin` / `staff` のみ。コメントもカスケード削除される。'
+      tags: [tasks]
+      responses:
+        '204':
+          description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/tasks/{taskId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/TaskId'
+    get:
+      operationId: listComments
+      summary: TODO のコメント一覧を取得する
+      description: 全ロールが閲覧できる。作成日時の昇順。
+      tags: [comments]
+      responses:
+        '200':
+          description: コメント一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskComment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createComment
+      summary: TODO にコメントを投稿する
+      description: '`admin` / `staff` のみ。'
+      tags: [comments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: 投稿したコメント
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskComment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/members:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listMembers
+      summary: メンバー一覧を取得する
+      description: 全ロールが閲覧できる。参加日時の昇順。
+      tags: [members]
+      responses:
+        '200':
+          description: メンバー一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/MemberUserId'
+    patch:
+      operationId: updateMemberRole
+      summary: メンバーのロールを変更する
+      description: '`admin` のみ。オーナーのロールは変更できない。'
+      tags: [members]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRoleRequest'
+      responses:
+        '200':
+          description: 変更後のメンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMember'
+        '400':
+          description: |
+            - `validation_error`: 入力が不正
+            - `owner_immutable`: 対象がオーナー
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                ownerImmutable:
+                  value: { error: owner_immutable }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: 自分がプロジェクトのメンバーでない、または対象ユーザーがメンバーでない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: removeMember
+      summary: メンバーを外す
+      description: '`admin` のみ。オーナーと自分自身は外せない。対象ユーザーが担当していた TODO は担当者なしになる。'
+      tags: [members]
+      responses:
+        '204':
+          description: 削除完了
+        '400':
+          description: |
+            - `owner_immutable`: 対象がオーナー
+            - `cannot_remove_self`: 対象が自分自身
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                ownerImmutable:
+                  value: { error: owner_immutable }
+                cannotRemoveSelf:
+                  value: { error: cannot_remove_self }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: 自分がプロジェクトのメンバーでない、または対象ユーザーがメンバーでない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/invitations:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listProjectInvitations
+      summary: プロジェクトの招待一覧を取得する
+      description: '`admin` のみ。有効期限切れの招待も含む。作成日時の昇順。'
+      tags: [invitations]
+      responses:
+        '200':
+          description: 招待一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectInvitation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createInvitation
+      summary: メールアドレス宛てに招待を作成する
+      description: |
+        `admin` のみ。有効期限は作成から 7 日。パスコードはハッシュ化して保存し、レスポンスには含めない（招待者が別経路で伝える）。
+        同じプロジェクト・同じメールアドレスへの招待が既にある場合は上書きし、ロール・パスコード・有効期限・失敗回数（ロック）をリセットする。
+      tags: [invitations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        '201':
+          description: 作成（または上書き）した招待
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectInvitation'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 招待先メールアドレスのユーザーが既にメンバー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: already_member }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/invitations/{invitationId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/InvitationId'
+    delete:
+      operationId: deleteInvitation
+      summary: 招待を取り消す
+      description: '`admin` のみ。'
+      tags: [invitations]
+      responses:
+        '204':
+          description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または招待がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/invitations:
+    get:
+      operationId: listMyInvitations
+      summary: 自分宛ての招待一覧を取得する
+      description: ログイン中ユーザーのメールアドレス宛てで、有効期限内のものだけ返す。作成日時の昇順。
+      tags: [invitations]
+      responses:
+        '200':
+          description: 招待一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectInvitation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/invitations/{invitationId}/accept:
+    parameters:
+      - $ref: '#/components/parameters/InvitationId'
+    post:
+      operationId: acceptInvitation
+      summary: 招待を受諾してプロジェクトに参加する
+      description: |
+        ログイン中ユーザーのメールアドレス宛ての招待だけ受諾できる。パスコードが一致すると招待のロールでメンバーに追加し、招待を削除する。
+        既にメンバーの場合は既存のロールを維持する。パスコードを 10 回間違えると以後は 423 になる（再招待でリセット）。
+      tags: [invitations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+      responses:
+        '200':
+          description: 参加したプロジェクト（`role` は参加後の自分のロール）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: |
+            - `validation_error`: 入力が不正
+            - `invalid_passcode`: パスコードが一致しない（失敗回数を加算する）
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                invalidPasscode:
+                  value: { error: invalid_passcode }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          description: 招待が存在しない、または自分宛てでない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '410':
+          description: 招待の有効期限切れ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: expired }
+        '423':
+          description: パスコードの失敗回数が上限（10 回）に達している
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: locked }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/me:
+    patch:
+      operationId: updateMe
+      summary: 表示名を変更する
+      tags: [me]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: 更新後のユーザー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteMe
+      summary: 退会する
+      description: |
+        自分以外のメンバーがいるオーナープロジェクトがあると退会できない（409。先にオーナーを移すかメンバーを外す）。
+        退会すると、自分だけのオーナープロジェクトを削除し、全プロジェクトのメンバーから外れ、担当 TODO を担当者なしにし、
+        アバターを削除する。ユーザー行は削除せず匿名化する（表示名は `退会したユーザー`）。現在のセッションを破棄し `session_id` Cookie を削除する。
+      tags: [me]
+      responses:
+        '204':
+          description: 退会完了
+          headers:
+            Set-Cookie:
+              description: '`session_id` の削除'
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '409':
+          description: 自分以外のメンバーがいるオーナープロジェクトがある
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionBlocked'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/me/avatar:
+    put:
+      operationId: uploadAvatar
+      summary: アバター画像をアップロードする
+      description: |
+        `multipart/form-data` の `file` フィールドで送る。PNG / JPEG / WebP、100 KiB 以下、幅・高さとも 256px 以下。
+        画像ヘッダーから寸法を読むため、ヘッダーが読めない画像も `image_too_large` になる。
+        アップロードごとに新しい URL になり、以前の画像は削除される。
+      tags: [me]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadAvatarRequest'
+            encoding:
+              file:
+                contentType: image/png, image/jpeg, image/webp
+      responses:
+        '200':
+          description: 更新後のユーザー（`avatarUrl` が新しい画像を指す）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '400':
+          description: |
+            - `file_required`: `file` フィールドが無い、またはファイルでない
+            - `unsupported_media_type`: ファイルの Content-Type が PNG / JPEG / WebP 以外
+            - `image_too_large`: 幅か高さが 256px を超える、または画像ヘッダーから寸法を読めない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                fileRequired:
+                  value: { error: file_required }
+                unsupportedMediaType:
+                  value: { error: unsupported_media_type }
+                imageTooLarge:
+                  value: { error: image_too_large }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '413':
+          description: ファイルが 100 KiB を超える、またはリクエストボディ全体が 100 KiB + 16 KiB を超える
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: payload_too_large }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: removeAvatar
+      summary: アバター画像を削除する
+      tags: [me]
+      responses:
+        '200':
+          description: 更新後のユーザー（`avatarUrl` は `null`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/avatars/{userId}/{fileId}:
+    get:
+      operationId: getAvatar
+      summary: アバター画像を取得する
+      description: |
+        ユーザー情報の `avatarUrl`（`/api/avatars/{userId}/{fileId}`）が指す画像を返す。ログインしていれば誰のアバターでも取得できる。
+        URL ごとに内容が不変なので `Cache-Control: private, max-age=31536000, immutable` を付ける。
+      tags: [avatars]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: アバターの持ち主のユーザー ID
+          schema:
+            type: string
+        - name: fileId
+          in: path
+          required: true
+          description: アップロードごとに発行されるファイル ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 画像本体。Content-Type はアップロード時のもの（不明なら `application/octet-stream`）。
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: private, max-age=31536000, immutable
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            image/png:
+              schema:
+                type: string
+                contentMediaType: image/png
+            image/jpeg:
+              schema:
+                type: string
+                contentMediaType: image/jpeg
+            image/webp:
+              schema:
+                type: string
+                contentMediaType: image/webp
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          description: 画像が存在しない（差し替え・削除済みを含む）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: Google OAuth ログイン成功時に発行されるセッション Cookie（HttpOnly / Secure / SameSite=Lax、7 日）。
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: プロジェクト ID
+      schema:
+        type: string
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      description: TODO の ID
+      schema:
+        type: string
+    MemberUserId:
+      name: userId
+      in: path
+      required: true
+      description: 対象メンバーのユーザー ID
+      schema:
+        type: string
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      description: 招待 ID
+      schema:
+        type: string
+
+  responses:
+    ValidationError:
+      description: リクエストのバリデーションに失敗した
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    Unauthorized:
+      description: 未ログイン、またはセッションが無効（期限切れ・退会済み）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: { error: unauthorized }
+    NotFound:
+      description: 対象が存在しない、またはプロジェクトのメンバーでない（存在を隠すため 404 にしている）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: { error: not_found }
+    IpBanned:
+      description: 送信元 IP が永久 BAN されている
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: { error: ip_banned }
+    ForbiddenOrIpBanned:
+      description: |
+        - `forbidden`: プロジェクトのメンバーだが、この操作に必要なロール（またはオーナー権限）が無い
+        - `ip_banned`: 送信元 IP が永久 BAN されている
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            forbidden:
+              value: { error: forbidden }
+            ipBanned:
+              value: { error: ip_banned }
+    RateLimited:
+      description: レートリミット超過、または一時 BAN 中
+      headers:
+        Retry-After:
+          description: 再試行できるまでの秒数
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: { error: rate_limited }
+
+  schemas:
+    ProjectRole:
+      type: string
+      enum: [admin, staff, substaff]
+      description: '`admin`: 全操作 / `staff`: 閲覧と編集 / `substaff`: 閲覧のみ'
+    TaskStatus:
+      type: string
+      enum: [open, done]
+    Timestamp:
+      type: string
+      format: date-time
+      description: ISO 8601（UTC、ミリ秒付き）
+    AvatarUrl:
+      type: [string, 'null']
+      description: アバター画像のパス（`/api/avatars/{userId}/{fileId}`、API のオリジンからの相対パス）。未設定なら `null`。
+      examples: ['/api/avatars/0b9e1c1e-9d3b-4c52-8f7e-3d6a2f1c0a11/5f0c8e2a-7c1d-4b8e-9a3f-2d1e0c9b8a76']
+
+    HealthCheckResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    AuthUser:
+      type: object
+      description: ログイン中のユーザー
+      required: [id, email, name, avatarUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          $ref: '#/components/schemas/AvatarUrl'
+    UserSummary:
+      type: object
+      description: 他のリソースに埋め込まれるユーザー情報。退会済みユーザーは name が `退会したユーザー`、email が `deleted-{id}@deleted.invalid` になる。
+      required: [id, email, name, avatarUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          $ref: '#/components/schemas/AvatarUrl'
+    Project:
+      type: object
+      required: [id, name, description, ownerId, role, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: string
+        role:
+          allOf:
+            - $ref: '#/components/schemas/ProjectRole'
+          description: リクエストしたユーザー自身のロール
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+    ProjectMember:
+      type: object
+      required: [userId, email, name, avatarUrl, role, isOwner, createdAt]
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          $ref: '#/components/schemas/AvatarUrl'
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        isOwner:
+          type: boolean
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/Timestamp'
+          description: メンバーになった日時
+    ProjectInvitation:
+      type: object
+      required: [id, projectId, projectName, email, role, invitedBy, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        projectName:
+          type: string
+        email:
+          type: string
+          format: email
+          description: 小文字に正規化済み
+        role:
+          allOf:
+            - $ref: '#/components/schemas/ProjectRole'
+          description: 受諾時に付与されるロール
+        invitedBy:
+          $ref: '#/components/schemas/UserSummary'
+        expiresAt:
+          $ref: '#/components/schemas/Timestamp'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+    Task:
+      type: object
+      required: [id, projectId, title, description, status, assignee, createdBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        assignee:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        createdBy:
+          $ref: '#/components/schemas/UserSummary'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+    TaskComment:
+      type: object
+      required: [id, taskId, author, body, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+        author:
+          $ref: '#/components/schemas/UserSummary'
+        body:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        description:
+          type: string
+          maxLength: 4000
+          description: 省略時は空文字
+    UpdateProjectRequest:
+      type: object
+      description: 全フィールド省略可。省略したフィールドは変更しない。
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        description:
+          type: string
+          maxLength: 4000
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        description:
+          type: string
+          maxLength: 4000
+          description: 省略時は空文字
+        assigneeId:
+          type: [string, 'null']
+          description: 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` または省略で担当者なし。
+    UpdateTaskRequest:
+      type: object
+      description: 全フィールド省略可。省略したフィールドは変更しない。
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        description:
+          type: string
+          maxLength: 4000
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        assigneeId:
+          type: [string, 'null']
+          description: 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` で担当を外す。
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: 前後の空白を除去してから長さを検証・保存する
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+    CreateInvitationRequest:
+      type: object
+      required: [email, role, passcode]
+      properties:
+        email:
+          type: string
+          format: email
+          description: 前後の空白を除去し小文字化してから検証・保存する
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        passcode:
+          type: string
+          minLength: 4
+          maxLength: 32
+          description: 受諾時に必要なパスコード。招待者が招待先に別経路で伝える。
+    AcceptInvitationRequest:
+      type: object
+      required: [passcode]
+      properties:
+        passcode:
+          type: string
+          minLength: 4
+          maxLength: 32
+    UpdateMeRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 前後の空白を除去してから長さを検証・保存する
+    UploadAvatarRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: PNG / JPEG / WebP、100 KiB（102400 バイト）以下、幅・高さとも 256px 以下
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: エラーコード
+          examples: [not_found]
+    ValidationError:
+      type: object
+      required: [error, issues]
+      properties:
+        error:
+          type: string
+          const: validation_error
+        issues:
+          type: array
+          description: zod の issue 配列（`ZodError.issues`）をそのまま返す
+          items:
+            type: object
+            required: [code, path, message]
+            properties:
+              code:
+                type: string
+              path:
+                type: array
+                items:
+                  type: [string, number]
+              message:
+                type: string
+            additionalProperties: true
+    AccountDeletionBlocked:
+      type: object
+      required: [error, projects]
+      properties:
+        error:
+          type: string
+          const: owned_projects_have_members
+        projects:
+          type: array
+          description: 退会を妨げているオーナープロジェクト（作成日時の昇順）
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
