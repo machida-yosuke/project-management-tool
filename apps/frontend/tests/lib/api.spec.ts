@@ -1,70 +1,100 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, apiFetch } from '../../src/lib/api';
+import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { ApiRequestError, axiosInstance, customInstance } from '../../src/lib/api';
 import { useAuthStore } from '../../src/stores/auth';
-import { json, noContent } from '../helpers/api-mock';
+import { json, noContent, setAdapter, stubApi } from '../helpers/api-mock';
 
-describe('apiFetch', () => {
+function captureConfigs() {
+  const inner = axiosInstance.defaults.adapter as AxiosAdapter;
+  const configs: InternalAxiosRequestConfig[] = [];
+  setAdapter((config) => {
+    configs.push(config);
+    return inner(config);
+  });
+  return configs;
+}
+
+describe('customInstance', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  it('sends JSON bodies and returns the parsed response body', async () => {
+    const requests = stubApi({ 'POST /api/projects': json({ id: 'p1' }, 201) });
+    const configs = captureConfigs();
 
-  it('sends JSON with credentials to the API base URL and returns the parsed body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json({ id: 'p1' }, 201));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const result = await apiFetch<{ id: string }>('/api/projects', {
+    const result = await customInstance<{ id: string }>({
+      url: '/api/projects',
       method: 'POST',
-      body: { name: 'X' },
+      headers: { 'Content-Type': 'application/json' },
+      data: { name: 'X' },
     });
 
     expect(result).toEqual({ id: 'p1' });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://localhost:8787/api/projects');
-    expect(init.credentials).toBe('include');
-    expect(init.method).toBe('POST');
-    expect(init.body).toBe(JSON.stringify({ name: 'X' }));
-    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
+    expect(requests.mock.calls[0]?.[0]).toEqual({
+      method: 'POST',
+      path: '/api/projects',
+      body: { name: 'X' },
+    });
+    expect(configs[0]?.headers.get('Content-Type')).toBe('application/json');
   });
 
-  it('does not set a Content-Type header when there is no body', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json([]));
-    vi.stubGlobal('fetch', fetchMock);
+  it('targets the API base URL with credentials', async () => {
+    stubApi({ 'GET /api/projects': json([]) });
+    const configs = captureConfigs();
 
-    await apiFetch('/api/projects');
+    await customInstance({ url: '/api/projects', method: 'GET' });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(init.body).toBeUndefined();
-    expect(new Headers(init.headers).has('Content-Type')).toBe(false);
+    expect(configs[0]?.baseURL).toBe('https://localhost:8787');
+    expect(configs[0]?.withCredentials).toBe(true);
   });
 
-  it('passes FormData bodies through without a JSON Content-Type', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json({}));
-    vi.stubGlobal('fetch', fetchMock);
+  it('merges per-call options into the request config', async () => {
+    stubApi({ 'GET /api/projects': json([]) });
+    const configs = captureConfigs();
+    const controller = new AbortController();
+
+    await customInstance({ url: '/api/projects', method: 'GET' }, { signal: controller.signal });
+
+    expect(configs[0]?.signal).toBe(controller.signal);
+  });
+
+  it('passes FormData bodies through untouched', async () => {
+    const requests = stubApi({ 'PUT /api/me/avatar': json({}) });
     const form = new FormData();
     form.append('file', new File(['x'], 'x.png', { type: 'image/png' }));
 
-    await apiFetch('/api/me/avatar', { method: 'PUT', body: form });
+    await customInstance({
+      url: '/api/me/avatar',
+      method: 'PUT',
+      headers: { 'Content-Type': 'multipart/form-data' },
+      data: form,
+    });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(init.body).toBe(form);
-    expect(new Headers(init.headers).has('Content-Type')).toBe(false);
+    expect(requests.mock.calls[0]?.[0].body).toBe(form);
   });
 
   it('returns undefined for 204 responses', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(noContent()));
+    stubApi({ 'DELETE /api/projects/p1': noContent() });
 
-    await expect(apiFetch('/api/projects/p1', { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(
+      customInstance({ url: '/api/projects/p1', method: 'DELETE' }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('axiosInstance error interceptor', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
   });
 
   it('throws ApiRequestError with status and error code for non-2xx responses', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: 'forbidden' }, 403)));
+    stubApi({ 'GET /api/projects/p1': json({ error: 'forbidden' }, 403) });
 
-    const error = await apiFetch('/api/projects/p1').catch((e: unknown) => e);
+    const error = await customInstance({ url: '/api/projects/p1', method: 'GET' }).catch(
+      (e: unknown) => e,
+    );
 
     expect(error).toBeInstanceOf(ApiRequestError);
     expect(error).toMatchObject({ status: 403, error: 'forbidden' });
@@ -72,9 +102,9 @@ describe('apiFetch', () => {
 
   it('exposes the parsed error body as details', async () => {
     const body = { error: 'owned_projects_have_members', projects: [{ id: 'p1', name: 'P' }] };
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(body, 409)));
+    stubApi({ 'DELETE /api/me': json(body, 409) });
 
-    await expect(apiFetch('/api/me', { method: 'DELETE' })).rejects.toMatchObject({
+    await expect(customInstance({ url: '/api/me', method: 'DELETE' })).rejects.toMatchObject({
       status: 409,
       error: 'owned_projects_have_members',
       details: body,
@@ -82,32 +112,50 @@ describe('apiFetch', () => {
   });
 
   it('uses a generic error code when the error body is not JSON', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>', { status: 502 })));
+    stubApi({ 'GET /api/projects': new Response('<html>', { status: 502 }) });
 
-    await expect(apiFetch('/api/projects')).rejects.toMatchObject({
+    await expect(customInstance({ url: '/api/projects', method: 'GET' })).rejects.toMatchObject({
       status: 502,
       error: 'unknown_error',
+      details: null,
     });
   });
 
   it('marks the auth store unauthenticated on 401', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: 'unauthorized' }, 401)));
+    stubApi({ 'GET /api/projects': json({ error: 'unauthorized' }, 401) });
     const authStore = useAuthStore();
     authStore.status = 'authenticated';
     authStore.user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
 
-    await expect(apiFetch('/api/projects')).rejects.toMatchObject({ status: 401 });
+    await expect(customInstance({ url: '/api/projects', method: 'GET' })).rejects.toMatchObject({
+      status: 401,
+    });
 
     expect(authStore.status).toBe('unauthenticated');
     expect(authStore.user).toBeNull();
   });
 
   it('leaves the auth store alone on other errors', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: 'forbidden' }, 403)));
+    stubApi({ 'GET /api/projects': json({ error: 'forbidden' }, 403) });
     const authStore = useAuthStore();
     authStore.status = 'authenticated';
 
-    await expect(apiFetch('/api/projects')).rejects.toBeInstanceOf(ApiRequestError);
+    await expect(customInstance({ url: '/api/projects', method: 'GET' })).rejects.toBeInstanceOf(
+      ApiRequestError,
+    );
+
+    expect(authStore.status).toBe('authenticated');
+  });
+
+  it('rethrows errors without an HTTP response as-is', async () => {
+    const networkError = new AxiosError('Network Error', AxiosError.ERR_NETWORK);
+    setAdapter(() => Promise.reject(networkError));
+    const authStore = useAuthStore();
+    authStore.status = 'authenticated';
+
+    await expect(customInstance({ url: '/api/projects', method: 'GET' })).rejects.toBe(
+      networkError,
+    );
 
     expect(authStore.status).toBe('authenticated');
   });

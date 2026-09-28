@@ -1,9 +1,23 @@
 import { vi } from 'vitest';
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import type { Project, ProjectInvitation, ProjectMember, Task, UserSummary } from '@pm-tool/shared';
+import { axiosInstance } from '../../src/lib/api';
 
 export const API_BASE = 'https://localhost:8787';
 
 type Handler = (body: unknown) => Response | Promise<Response>;
+
+export interface RecordedRequest {
+  method: string;
+  path: string;
+  body: unknown;
+}
 
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -16,29 +30,68 @@ export function noContent(): Response {
   return new Response(null, { status: 204 });
 }
 
+export function setAdapter(adapter: AxiosAdapter) {
+  axiosInstance.defaults.adapter = adapter;
+}
+
+export function rejectAllRequests() {
+  setAdapter((config) => {
+    const { method, path } = describeRequest(config);
+    throw new Error(`Unexpected request: ${method} ${path}`);
+  });
+}
+
+function describeRequest(config: InternalAxiosRequestConfig): RecordedRequest {
+  const method = (config.method ?? 'get').toUpperCase();
+  const url = config.url ?? '';
+  const path = url.startsWith(API_BASE) ? url.slice(API_BASE.length) : url;
+  const raw: unknown = config.data;
+  const body =
+    typeof raw === 'string'
+      ? (JSON.parse(raw) as unknown)
+      : raw instanceof FormData
+        ? raw
+        : undefined;
+  return { method, path, body };
+}
+
+// Mirrors axios' internal `settle` so interceptors see the same AxiosError shape as a real adapter.
+async function toAxiosResponse(
+  res: Response,
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> {
+  const response: AxiosResponse = {
+    data: await res.text(),
+    status: res.status,
+    statusText: res.statusText,
+    headers: new AxiosHeaders(Object.fromEntries(res.headers.entries())),
+    config,
+  };
+  if (config.validateStatus && !config.validateStatus(res.status)) {
+    throw new AxiosError(
+      `Request failed with status code ${res.status}`,
+      res.status >= 500 ? AxiosError.ERR_BAD_RESPONSE : AxiosError.ERR_BAD_REQUEST,
+      config,
+      null,
+      response,
+    );
+  }
+  return response;
+}
+
 // Routes are keyed as "METHOD /path"; an unmatched request fails the test loudly.
 export function stubApi(routes: Record<string, Handler | Response>) {
-  const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
-    const method = init?.method ?? 'GET';
-    const path = input.startsWith(API_BASE) ? input.slice(API_BASE.length) : input;
-    const route = routes[`${method} ${path}`];
+  const requests = vi.fn((request: RecordedRequest) => request);
+  setAdapter(async (config) => {
+    const request = requests(describeRequest(config));
+    const route = routes[`${request.method} ${request.path}`];
     if (!route) {
-      throw new Error(`Unexpected request: ${method} ${path}`);
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
     }
-    if (route instanceof Response) {
-      return route.clone();
-    }
-    const rawBody = init?.body;
-    const body =
-      typeof rawBody === 'string'
-        ? (JSON.parse(rawBody) as unknown)
-        : rawBody instanceof FormData
-          ? rawBody
-          : undefined;
-    return route(body);
+    const res = route instanceof Response ? route.clone() : await route(request.body);
+    return toAxiosResponse(res, config);
   });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return requests;
 }
 
 export const alice: UserSummary = {

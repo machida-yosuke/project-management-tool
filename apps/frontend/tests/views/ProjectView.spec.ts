@@ -1,35 +1,43 @@
 import { flushPromises } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ProjectRole, TaskComment } from '@pm-tool/shared';
+import { describe, expect, it } from 'vitest';
+import type { ProjectRole, Task, TaskComment } from '@pm-tool/shared';
 import ProjectView from '../../src/views/ProjectView.vue';
-import { alice, bob, json, makeMember, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import {
+  alice,
+  bob,
+  json,
+  makeMember,
+  makeProject,
+  makeTask,
+  noContent,
+  stubApi,
+} from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
 
-const comment: TaskComment = {
-  id: 'c1',
-  taskId: 't1',
-  author: bob,
-  body: 'Looks good',
-  createdAt: '2026-09-02T00:00:00.000Z',
-};
+function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
+  return {
+    id: 'c1',
+    taskId: 't1',
+    author: bob,
+    body: 'Looks good',
+    createdAt: '2026-09-02T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
-function baseRoutes(role: ProjectRole) {
+function baseRoutes(role: ProjectRole, tasks: () => Task[] = () => [makeTask({ assignee: bob })]) {
   return {
     'GET /api/projects/p1': json(makeProject({ role })),
-    'GET /api/projects/p1/tasks': json([makeTask({ assignee: bob })]),
+    'GET /api/projects/p1/tasks': () => json(tasks()),
     'GET /api/projects/p1/members': json([
       makeMember(alice, { role: 'admin', isOwner: true }),
       makeMember(bob, { role }),
     ]),
-    'GET /api/projects/p1/tasks/t1/comments': json([comment]),
+    'GET /api/projects/p1/tasks/t1/comments': json([makeComment()]),
   };
 }
 
 describe('ProjectView', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('shows edit controls for staff', async () => {
     stubApi(baseRoutes('staff'));
 
@@ -65,12 +73,27 @@ describe('ProjectView', () => {
   });
 
   it('adds a task, toggles completion and changes the assignee', async () => {
-    const created = makeTask({ id: 't2', title: 'New task' });
-    const fetchMock = stubApi({
-      ...baseRoutes('admin'),
-      'POST /api/projects/p1/tasks': () => json(created, 201),
-      'PATCH /api/projects/p1/tasks/t1': (body) =>
-        json(makeTask({ ...(body as object), assignee: bob, status: 'done' })),
+    let tasks = [makeTask({ assignee: bob })];
+    const requests = stubApi({
+      ...baseRoutes('admin', () => tasks),
+      'POST /api/projects/p1/tasks': () => {
+        const created = makeTask({ id: 't2', title: 'New task' });
+        tasks = [...tasks, created];
+        return json(created, 201);
+      },
+      'PATCH /api/projects/p1/tasks/t1': (body) => {
+        const current = tasks[0] ?? makeTask();
+        const patch = body as { status?: Task['status']; assigneeId?: string | null };
+        const updated = makeTask({
+          ...current,
+          ...(patch.status ? { status: patch.status } : {}),
+          ...(patch.assigneeId !== undefined
+            ? { assignee: patch.assigneeId === bob.id ? bob : null }
+            : {}),
+        });
+        tasks = [updated, ...tasks.slice(1)];
+        return json(updated);
+      },
     });
 
     const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
@@ -78,24 +101,69 @@ describe('ProjectView', () => {
     await wrapper.get('input[aria-label="TODO のタイトル"]').setValue('New task');
     await wrapper.get('[data-testid="create-task"]').trigger('submit');
     await flushPromises();
-    expect(wrapper.findAll('[data-testid="task"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="task"]').map((t) => t.get('button.link').text())).toEqual(
+      ['Write spec', 'New task'],
+    );
+    expect(inputValue(wrapper.get('input[aria-label="TODO のタイトル"]'))).toBe('');
 
     await wrapper.get('[data-testid="task"] input[type="checkbox"]').setValue(true);
     await flushPromises();
+    expect(wrapper.get('[data-testid="task"]').classes()).toContain('done');
+
     await wrapper.get('[data-testid="task"] select').setValue('');
     await flushPromises();
+    expect(inputValue(wrapper.get('[data-testid="task"] select'))).toBe('');
 
-    const patchBodies = fetchMock.mock.calls
-      .filter(([, init]) => init?.method === 'PATCH')
-      .map(([, init]) => JSON.parse(init?.body as string) as unknown);
-    expect(patchBodies).toEqual([{ status: 'done' }, { assigneeId: null }]);
+    const calls = requests.mock.calls.map(([req]) => req);
+    expect(calls.filter((req) => req.method === 'POST').map((req) => req.body)).toEqual([
+      { title: 'New task' },
+    ]);
+    expect(calls.filter((req) => req.method === 'PATCH').map((req) => req.body)).toEqual([
+      { status: 'done' },
+      { assigneeId: null },
+    ]);
+  });
+
+  it('removes a deleted task and closes its thread when it was selected', async () => {
+    let tasks = [makeTask(), makeTask({ id: 't2', title: 'Second' })];
+    stubApi({
+      ...baseRoutes('admin', () => tasks),
+      'DELETE /api/projects/p1/tasks/t1': () => {
+        tasks = tasks.filter((task) => task.id !== 't1');
+        return noContent();
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="thread"]').text()).toContain('Looks good');
+
+    const deleteButton = wrapper
+      .get('[data-testid="task"]')
+      .findAll('button')
+      .find((b) => b.text() === '削除');
+    await deleteButton?.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-testid="task"]').map((t) => t.get('button.link').text())).toEqual(
+      ['Second'],
+    );
+    expect(wrapper.get('[data-testid="thread"]').text()).toBe(
+      'TODO を選択するとスレッドが表示されます',
+    );
   });
 
   it('opens a thread and posts a comment', async () => {
-    const posted: TaskComment = { ...comment, id: 'c2', author: alice, body: 'Thanks' };
-    const fetchMock = stubApi({
+    let comments = [makeComment()];
+    const requests = stubApi({
       ...baseRoutes('admin'),
-      'POST /api/projects/p1/tasks/t1/comments': () => json(posted, 201),
+      'GET /api/projects/p1/tasks/t1/comments': () => json(comments),
+      'POST /api/projects/p1/tasks/t1/comments': () => {
+        const posted = makeComment({ id: 'c2', author: alice, body: 'Thanks' });
+        comments = [...comments, posted];
+        return json(posted, 201);
+      },
     });
 
     const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
@@ -106,15 +174,75 @@ describe('ProjectView', () => {
     await wrapper.get('[data-testid="create-comment"]').trigger('submit');
     await flushPromises();
 
-    const comments = wrapper.findAll('[data-testid="comment"]');
-    expect(comments.map((c) => c.text())).toEqual([
+    const rendered = wrapper.findAll('[data-testid="comment"]');
+    expect(rendered.map((c) => c.text())).toEqual([
       expect.stringContaining('Bob'),
       expect.stringContaining('Alice'),
     ]);
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) => url.endsWith('/comments') && init?.method === 'POST',
+    expect(inputValue(wrapper.get('textarea[aria-label="コメント"]'))).toBe('');
+    const postCall = requests.mock.calls
+      .map(([req]) => req)
+      .find((req) => req.path.endsWith('/comments') && req.method === 'POST');
+    expect(postCall?.body).toEqual({ body: 'Thanks' });
+  });
+
+  it('ignores a stale comment response after another task was selected', async () => {
+    let resolveFirst!: (res: Response) => void;
+    const first = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    stubApi({
+      ...baseRoutes('admin', () => [makeTask(), makeTask({ id: 't2', title: 'Second' })]),
+      'GET /api/projects/p1/tasks/t1/comments': () => first,
+      'GET /api/projects/p1/tasks/t2/comments': json([
+        makeComment({ id: 'c-t2', taskId: 't2', body: 'Second thread' }),
+      ]),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const [firstTask, secondTask] = wrapper.findAll('[data-testid="task"] button.link');
+    await firstTask?.trigger('click');
+    await flushPromises();
+    await secondTask?.trigger('click');
+    await flushPromises();
+    resolveFirst(json([makeComment({ body: 'First thread' })]));
+    await flushPromises();
+
+    const thread = wrapper.get('[data-testid="thread"]');
+    expect(thread.get('h3').text()).toBe('Second');
+    expect(
+      wrapper.findAll('[data-testid="comment"]').map((c) => c.get('.comment-body').text()),
+    ).toEqual(['Second thread']);
+  });
+
+  it('shows a comment load error inside the thread', async () => {
+    stubApi({
+      ...baseRoutes('admin'),
+      'GET /api/projects/p1/tasks/t1/comments': json({ error: 'internal_error' }, 500),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+
+    const thread = wrapper.get('[data-testid="thread"]');
+    expect(thread.get('[role="alert"]').text()).toBe('コメントの読み込みに失敗しました');
+    expect(thread.text()).not.toContain('コメントはありません');
+  });
+
+  it('shows an action error when the assignee is not a member', async () => {
+    stubApi({
+      ...baseRoutes('admin'),
+      'PATCH /api/projects/p1/tasks/t1': json({ error: 'assignee_not_member' }, 400),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] select').setValue(alice.id);
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe(
+      '担当者はプロジェクトメンバーから選んでください',
     );
-    expect(JSON.parse(postCall?.[1]?.body as string)).toEqual({ body: 'Thanks' });
   });
 
   it('shows not found for projects the user is not a member of', async () => {

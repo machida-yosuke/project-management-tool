@@ -1,4 +1,6 @@
+import axios, { AxiosError, type AxiosRequestConfig } from 'axios';
 import type { ApiError } from '@pm-tool/shared';
+// Circular (api.ts -> stores/auth -> generated -> api.ts): only reference imports inside function bodies here.
 import { useAuthStore } from '../stores/auth';
 
 export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'https://localhost:8787';
@@ -17,60 +19,48 @@ export class ApiRequestError extends Error {
   }
 }
 
-export type ApiFetchInit = Omit<RequestInit, 'body' | 'credentials'> & { body?: unknown };
-
-async function readErrorBody(res: Response): Promise<{ body: ApiError; details: unknown }> {
-  const text = await res.text();
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'error' in parsed &&
-      typeof parsed.error === 'string'
-    ) {
-      return { body: { error: parsed.error }, details: parsed };
-    }
-  } catch (e) {
-    // Non-JSON error bodies (e.g. proxy HTML pages) fall through to a generic code.
-    if (!(e instanceof SyntaxError)) throw e;
+function parseErrorBody(parsed: unknown): { body: ApiError; details: unknown } {
+  if (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    'error' in parsed &&
+    typeof parsed.error === 'string'
+  ) {
+    return { body: { error: parsed.error }, details: parsed };
   }
   return { body: { error: 'unknown_error' }, details: null };
 }
 
-function encodeBody(body: unknown, headers: Headers) {
-  if (body === undefined) return undefined;
-  // The browser sets the multipart boundary itself, so no Content-Type here.
-  if (body instanceof FormData) return body;
-  headers.set('Content-Type', 'application/json');
-  return JSON.stringify(body);
+function markUnauthenticated() {
+  const authStore = useAuthStore();
+  authStore.user = null;
+  authStore.status = 'unauthenticated';
 }
 
-export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
-  const { body, headers, ...rest } = init;
-  const requestHeaders = new Headers(headers);
+export const axiosInstance = axios.create({ baseURL: apiBaseUrl, withCredentials: true });
 
-  const res = await fetch(`${apiBaseUrl}${path}`, {
-    ...rest,
-    headers: requestHeaders,
-    credentials: 'include',
-    body: encodeBody(body, requestHeaders),
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      const authStore = useAuthStore();
-      authStore.user = null;
-      authStore.status = 'unauthenticated';
-    }
-    const { body: errorBody, details } = await readErrorBody(res);
-    throw new ApiRequestError(res.status, errorBody, details);
+axiosInstance.interceptors.response.use(undefined, (error: unknown) => {
+  if (!(error instanceof AxiosError) || !error.response) {
+    throw error;
   }
+  const { status, data } = error.response;
+  if (status === 401) {
+    markUnauthenticated();
+  }
+  // axios leaves non-JSON bodies (e.g. proxy HTML pages) as strings, which map to a generic code.
+  const { body, details } = parseErrorBody(data);
+  throw new ApiRequestError(status, body, details);
+});
 
+export async function customInstance<T>(
+  config: AxiosRequestConfig,
+  options?: AxiosRequestConfig,
+): Promise<T> {
+  const res = await axiosInstance<T>({ ...config, ...options });
   if (res.status === 204) {
     return undefined as T;
   }
-  return (await res.json()) as T;
+  return res.data;
 }
 
 export function errorMessage(

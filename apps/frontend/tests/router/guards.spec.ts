@@ -1,8 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { RouteLocationNormalized } from 'vue-router';
 import { requireAuthGuard } from '../../src/router/guards';
 import { useAuthStore } from '../../src/stores/auth';
+import { json, stubApi } from '../helpers/api-mock';
 
 function makeRoute(path: string, requiresAuth: boolean): RouteLocationNormalized {
   return {
@@ -17,17 +18,13 @@ describe('requireAuthGuard', () => {
     setActivePinia(createPinia());
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('allows navigation when the target route does not require auth', async () => {
     const result = await requireAuthGuard(makeRoute('/login', false), makeRoute('/', true));
     expect(result).toBe(true);
   });
 
   it('redirects to /login with a redirect query when unauthenticated', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    stubApi({ 'GET /api/auth/me': new Response(null, { status: 401 }) });
 
     const result = await requireAuthGuard(makeRoute('/', true), makeRoute('/', true));
 
@@ -55,7 +52,7 @@ describe('requireAuthGuard', () => {
     const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(fetchPromise));
+    stubApi({ 'GET /api/auth/me': () => fetchPromise });
 
     const authStore = useAuthStore();
     // Simulate a first navigation's guard already having kicked off fetchMe().
@@ -65,7 +62,7 @@ describe('requireAuthGuard', () => {
     // A second, back-to-back navigation's guard invocation runs while still loading.
     const guardResult = requireAuthGuard(makeRoute('/', true), makeRoute('/', true));
 
-    resolveFetch(new Response(JSON.stringify(user), { status: 200 }));
+    resolveFetch(json(user));
     await firstFetchMe;
 
     expect(await guardResult).toBe(true);

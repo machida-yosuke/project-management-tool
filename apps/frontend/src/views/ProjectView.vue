@@ -1,50 +1,88 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { canEdit, type Task } from '@pm-tool/shared';
+import { canEdit } from '@pm-tool/shared';
+import {
+  getListCommentsQueryKey,
+  getListTasksQueryKey,
+  useCreateComment,
+  useCreateTask,
+  useDeleteTask,
+  useGetProject,
+  useListComments,
+  useListMembers,
+  useListTasks,
+  useUpdateTask,
+} from '../api/generated';
+import type { Task } from '../api/generated/models';
 import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
-import { useMembersStore } from '../stores/members';
-import { useProjectsStore } from '../stores/projects';
-import { useTasksStore } from '../stores/tasks';
+import { useInvalidate } from '../lib/query';
 
 const route = useRoute();
-const projectsStore = useProjectsStore();
-const tasksStore = useTasksStore();
-const membersStore = useMembersStore();
+const invalidate = useInvalidate();
 
 const projectId = computed(() => String(route.params.projectId));
-const project = computed(() =>
-  projectsStore.current?.id === projectId.value ? projectsStore.current : null,
+const selectedTaskId = ref<string | null>(null);
+
+const projectQuery = useGetProject(projectId);
+const tasksQuery = useListTasks(projectId);
+const membersQuery = useListMembers(projectId);
+const commentsQuery = useListComments(
+  projectId,
+  () => selectedTaskId.value ?? '',
+  () => ({ query: { enabled: selectedTaskId.value !== null } }),
+);
+
+const project = computed(() => projectQuery.data.value ?? null);
+const tasks = computed(() => tasksQuery.data.value ?? []);
+const members = computed(() => membersQuery.data.value ?? []);
+const comments = computed(() => commentsQuery.data.value ?? []);
+const selectedTask = computed(
+  () => tasks.value.find((task) => task.id === selectedTaskId.value) ?? null,
 );
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
 
-const loadError = ref('');
+const loadError = computed(() => {
+  const e = projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value;
+  if (!e) return '';
+  // Non-members get 404 so the project's existence is not leaked.
+  return e instanceof ApiRequestError && e.status === 404
+    ? 'プロジェクトが見つかりません'
+    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+});
+const commentsError = computed(() => {
+  const e = commentsQuery.error.value;
+  return e ? errorMessage(e, {}, 'コメントの読み込みに失敗しました') : '';
+});
 const actionError = ref('');
 const newTitle = ref('');
 const newComment = ref('');
 
-watch(
-  projectId,
-  async (id) => {
-    loadError.value = '';
-    try {
-      await Promise.all([
-        projectsStore.fetchProject(id),
-        tasksStore.fetchTasks(id),
-        membersStore.fetchMembers(id),
-      ]);
-    } catch (e) {
-      // Non-members get 404 so the project's existence is not leaked.
-      loadError.value =
-        e instanceof ApiRequestError && e.status === 404
-          ? 'プロジェクトが見つかりません'
-          : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
-    }
+watch(projectId, () => {
+  selectedTaskId.value = null;
+});
+
+function invalidateTasks() {
+  return invalidate(getListTasksQueryKey(projectId.value));
+}
+
+const createTaskMutation = useCreateTask({ mutation: { onSuccess: invalidateTasks } });
+const updateTaskMutation = useUpdateTask({ mutation: { onSuccess: invalidateTasks } });
+const deleteTaskMutation = useDeleteTask({
+  mutation: {
+    onSuccess: (_, vars) => {
+      if (selectedTaskId.value === vars.taskId) selectedTaskId.value = null;
+      return invalidateTasks();
+    },
   },
-  { immediate: true },
-);
+});
+const createCommentMutation = useCreateComment({
+  mutation: {
+    onSuccess: (_, vars) => invalidate(getListCommentsQueryKey(vars.projectId, vars.taskId)),
+  },
+});
 
 async function runAction(action: () => Promise<unknown>, messages: Record<string, string> = {}) {
   actionError.value = '';
@@ -58,7 +96,10 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
 function createTask() {
   return runAction(
     async () => {
-      await tasksStore.createTask(projectId.value, { title: newTitle.value.trim() });
+      await createTaskMutation.mutateAsync({
+        projectId: projectId.value,
+        createTaskRequest: { title: newTitle.value.trim() },
+      });
       newTitle.value = '';
     },
     { validation_error: 'タイトルは1〜200文字で入力してください' },
@@ -67,8 +108,10 @@ function createTask() {
 
 function toggleDone(task: Task) {
   return runAction(() =>
-    tasksStore.updateTask(projectId.value, task.id, {
-      status: task.status === 'done' ? 'open' : 'done',
+    updateTaskMutation.mutateAsync({
+      projectId: projectId.value,
+      taskId: task.id,
+      updateTaskRequest: { status: task.status === 'done' ? 'open' : 'done' },
     }),
   );
 }
@@ -77,25 +120,35 @@ function assign(task: Task, event: Event) {
   const value = eventValue(event);
   return runAction(
     () =>
-      tasksStore.updateTask(projectId.value, task.id, { assigneeId: value === '' ? null : value }),
+      updateTaskMutation.mutateAsync({
+        projectId: projectId.value,
+        taskId: task.id,
+        updateTaskRequest: { assigneeId: value === '' ? null : value },
+      }),
     { assignee_not_member: '担当者はプロジェクトメンバーから選んでください' },
   );
 }
 
 function deleteTask(task: Task) {
-  return runAction(() => tasksStore.deleteTask(projectId.value, task.id));
+  return runAction(() =>
+    deleteTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
+  );
 }
 
 function selectTask(task: Task) {
-  return runAction(() => tasksStore.selectTask(projectId.value, task.id));
+  selectedTaskId.value = task.id;
 }
 
 function postComment() {
-  const taskId = tasksStore.selectedTaskId;
+  const taskId = selectedTaskId.value;
   if (!taskId) return;
   return runAction(
     async () => {
-      await tasksStore.postComment(projectId.value, taskId, newComment.value.trim());
+      await createCommentMutation.mutateAsync({
+        projectId: projectId.value,
+        taskId,
+        createCommentRequest: { body: newComment.value.trim() },
+      });
       newComment.value = '';
     },
     { validation_error: 'コメントは1〜4000文字で入力してください' },
@@ -139,13 +192,13 @@ function formatDate(iso: string) {
             />
             <button type="submit">追加</button>
           </form>
-          <p v-if="tasksStore.tasks.length === 0">TODO はありません</p>
+          <p v-if="tasks.length === 0">TODO はありません</p>
           <ul class="task-list">
             <li
-              v-for="task in tasksStore.tasks"
+              v-for="task in tasks"
               :key="task.id"
               :class="{
-                selected: task.id === tasksStore.selectedTaskId,
+                selected: task.id === selectedTaskId,
                 done: task.status === 'done',
               }"
               data-testid="task"
@@ -179,11 +232,7 @@ function formatDate(iso: string) {
                     @change="assign(task, $event)"
                   >
                     <option value="">未割り当て</option>
-                    <option
-                      v-for="member in membersStore.members"
-                      :key="member.userId"
-                      :value="member.userId"
-                    >
+                    <option v-for="member in members" :key="member.userId" :value="member.userId">
                       {{ member.name }}
                     </option>
                   </select>
@@ -201,14 +250,16 @@ function formatDate(iso: string) {
         </section>
 
         <section class="thread" data-testid="thread">
-          <template v-if="tasksStore.selectedTask">
-            <h3>{{ tasksStore.selectedTask.title }}</h3>
-            <p v-if="tasksStore.selectedTask.description">
-              {{ tasksStore.selectedTask.description }}
+          <!-- A <div>, not <template>: happy-dom returns null for form.nextSibling, which breaks fragment removal in tests. -->
+          <div v-if="selectedTask">
+            <h3>{{ selectedTask.title }}</h3>
+            <p v-if="selectedTask.description">
+              {{ selectedTask.description }}
             </p>
-            <p v-if="tasksStore.comments.length === 0" class="muted">コメントはありません</p>
+            <p v-if="commentsError" class="error" role="alert">{{ commentsError }}</p>
+            <p v-else-if="comments.length === 0" class="muted">コメントはありません</p>
             <ul class="comment-list">
-              <li v-for="comment in tasksStore.comments" :key="comment.id" data-testid="comment">
+              <li v-for="comment in comments" :key="comment.id" data-testid="comment">
                 <div class="comment-meta muted">
                   <UserAvatar
                     :name="comment.author.name"
@@ -235,7 +286,7 @@ function formatDate(iso: string) {
               />
               <button type="submit">投稿</button>
             </form>
-          </template>
+          </div>
           <p v-else class="muted">TODO を選択するとスレッドが表示されます</p>
         </section>
       </div>

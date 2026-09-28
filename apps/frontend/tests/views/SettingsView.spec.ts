@@ -50,8 +50,8 @@ describe('SettingsView', () => {
     await wrapper.get('[data-testid="name-form"]').trigger('submit');
     await flushPromises();
 
-    const [, init] = fetchMock.mock.calls[0] ?? [];
-    expect(JSON.parse(init?.body as string)).toEqual({ name: 'Alicia' });
+    const [req] = fetchMock.mock.calls[0] ?? [];
+    expect(req).toMatchObject({ method: 'PATCH', path: '/api/me', body: { name: 'Alicia' } });
     expect(useAuthStore(pinia).user?.name).toBe('Alicia');
     expect(wrapper.get('[role="status"]').text()).toBe('名前を更新しました');
   });

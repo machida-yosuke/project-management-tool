@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/.wrangler/**',
       '**/coverage/**',
       '**/.turbo/**',
+      'apps/frontend/src/api/generated/**',
     ],
   },
   js.configs.recommended,

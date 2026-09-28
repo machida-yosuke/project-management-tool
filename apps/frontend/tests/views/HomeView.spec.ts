@@ -1,15 +1,11 @@
 import { flushPromises } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import type { Project, ProjectInvitation } from '@pm-tool/shared';
 import HomeView from '../../src/views/HomeView.vue';
-import { useProjectsStore } from '../../src/stores/projects';
 import { bob, json, makeInvitation, makeProject, stubApi } from '../helpers/api-mock';
-import { mountAt } from '../helpers/mount';
+import { inputValue, mountAt } from '../helpers/mount';
 
 describe('HomeView', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('lists projects and invitations addressed to the user', async () => {
     stubApi({
       'GET /api/projects': json([makeProject()]),
@@ -25,12 +21,27 @@ describe('HomeView', () => {
     expect(invitation.text()).toContain('Alice');
   });
 
+  it('shows an alert when loading fails', async () => {
+    stubApi({
+      'GET /api/projects': json({ error: 'internal_error' }, 500),
+      'GET /api/invitations': json([]),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('読み込みに失敗しました');
+  });
+
   it('creates a project from the form', async () => {
     const created = makeProject({ id: 'p9', name: 'New project' });
-    const fetchMock = stubApi({
-      'GET /api/projects': json([]),
+    let projects: Project[] = [];
+    const requests = stubApi({
+      'GET /api/projects': () => json(projects),
       'GET /api/invitations': json([]),
-      'POST /api/projects': () => json(created, 201),
+      'POST /api/projects': () => {
+        projects = [created];
+        return json(created, 201);
+      },
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
@@ -38,34 +49,37 @@ describe('HomeView', () => {
     await wrapper.get('[data-testid="create-project"]').trigger('submit');
     await flushPromises();
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
-    expect(JSON.parse(postCall?.[1]?.body as string)).toEqual({
-      name: 'New project',
-      description: '',
-    });
+    const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
+    expect(post?.body).toEqual({ name: 'New project', description: '' });
     expect(wrapper.get('[data-testid="projects"]').text()).toContain('New project');
+    expect(inputValue(wrapper.get('input[aria-label="プロジェクト名"]'))).toBe('');
   });
 
   it('accepts an invitation, adds the project and navigates to it', async () => {
     const joined = makeProject({ id: 'p2', name: 'Invited Project', role: 'staff' });
-    const fetchMock = stubApi({
-      'GET /api/projects': json([]),
-      'GET /api/invitations': json([makeInvitation()]),
-      'POST /api/invitations/inv1/accept': () => json(joined),
-      'GET /api/projects/p2': json(joined),
-      'GET /api/projects/p2/tasks': json([]),
-      'GET /api/projects/p2/members': json([]),
+    let projects: Project[] = [];
+    let invitations: ProjectInvitation[] = [makeInvitation()];
+    const requests = stubApi({
+      'GET /api/projects': () => json(projects),
+      'GET /api/invitations': () => json(invitations),
+      'POST /api/invitations/inv1/accept': () => {
+        projects = [joined];
+        invitations = [];
+        return json(joined);
+      },
     });
 
-    const { wrapper, router, pinia } = await mountAt(HomeView, '/', bob);
+    const { wrapper, router } = await mountAt(HomeView, '/', bob);
     await wrapper.get('input[aria-label="暗証番号"]').setValue('4321');
     await wrapper.get('[data-testid="invitation"] form').trigger('submit');
     await flushPromises();
 
-    const acceptCall = fetchMock.mock.calls.find(([url]) => url.endsWith('/accept'));
-    expect(JSON.parse(acceptCall?.[1]?.body as string)).toEqual({ passcode: '4321' });
+    const accept = requests.mock.calls
+      .map(([req]) => req)
+      .find((req) => req.path === '/api/invitations/inv1/accept');
+    expect(accept?.body).toEqual({ passcode: '4321' });
     expect(router.currentRoute.value.fullPath).toBe('/projects/p2');
-    expect(useProjectsStore(pinia).projects).toEqual([joined]);
+    expect(wrapper.get('[data-testid="projects"]').text()).toContain('Invited Project');
     expect(wrapper.find('[data-testid="invitation"]').exists()).toBe(false);
   });
 

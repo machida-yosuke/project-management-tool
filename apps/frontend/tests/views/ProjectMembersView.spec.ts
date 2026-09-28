@@ -1,6 +1,6 @@
 import { flushPromises } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UserSummary } from '@pm-tool/shared';
+import { describe, expect, it } from 'vitest';
+import type { ProjectInvitation, ProjectMember, ProjectRole, UserSummary } from '@pm-tool/shared';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
 import {
   alice,
@@ -21,7 +21,7 @@ const carol: UserSummary = {
   avatarUrl: null,
 };
 
-const members = [
+const initialMembers = () => [
   makeMember(alice, { role: 'admin', isOwner: true }),
   makeMember(carol, { role: 'admin' }),
   makeMember(bob, { role: 'staff' }),
@@ -29,19 +29,20 @@ const members = [
 
 const pending = makeInvitation({ id: 'inv1', projectId: 'p1', email: 'dave@example.com' });
 
-describe('ProjectMembersView', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+function hasRole(body: unknown): body is { role: ProjectRole } {
+  return typeof body === 'object' && body !== null && 'role' in body;
+}
 
+describe('ProjectMembersView', () => {
   it('shows admin controls except for the owner and the current user', async () => {
     stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
-      'GET /api/projects/p1/members': json(members),
+      'GET /api/projects/p1/members': json(initialMembers()),
       'GET /api/projects/p1/invitations': json([pending]),
     });
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', carol);
+    await flushPromises();
 
     const [ownerRow, selfRow, bobRow] = wrapper.findAll('[data-testid="member"]');
     expect(ownerRow?.text()).toContain('alice@example.com');
@@ -57,38 +58,57 @@ describe('ProjectMembersView', () => {
   });
 
   it('hides management UI and does not request invitations for non-admins', async () => {
-    const fetchMock = stubApi({
+    const requests = stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'substaff' })),
-      'GET /api/projects/p1/members': json(members),
+      'GET /api/projects/p1/members': json(initialMembers()),
     });
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', bob);
+    await flushPromises();
 
     expect(wrapper.findAll('[data-testid="member"]')).toHaveLength(3);
     expect(wrapper.find('select').exists()).toBe(false);
     expect(wrapper.find('button').exists()).toBe(false);
     expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
-    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/invitations'))).toBe(false);
+    expect(requests.mock.calls.some(([req]) => req.path.endsWith('/invitations'))).toBe(false);
+  });
+
+  it('shows not found for a project the user cannot see', async () => {
+    stubApi({
+      'GET /api/projects/p1': json({ error: 'not_found' }, 404),
+      'GET /api/projects/p1/members': json({ error: 'not_found' }, 404),
+    });
+
+    const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', bob);
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.find('[data-testid="member"]').exists()).toBe(false);
   });
 
   it('invites a user and clears the passcode without echoing it', async () => {
+    let invitations: ProjectInvitation[] = [];
     const created = makeInvitation({ id: 'inv2', projectId: 'p1', email: 'erin@example.com' });
-    const fetchMock = stubApi({
+    const requests = stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
-      'GET /api/projects/p1/members': json(members),
-      'GET /api/projects/p1/invitations': json([]),
-      'POST /api/projects/p1/invitations': () => json(created, 201),
+      'GET /api/projects/p1/members': json(initialMembers()),
+      'GET /api/projects/p1/invitations': () => json(invitations),
+      'POST /api/projects/p1/invitations': () => {
+        invitations = [created];
+        return json(created, 201);
+      },
     });
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
+    await flushPromises();
     await wrapper.get('input[aria-label="メールアドレス"]').setValue('erin@example.com');
     await wrapper.get('select[aria-label="招待するロール"]').setValue('substaff');
     await wrapper.get('input[aria-label="暗証番号"]').setValue('s3cret');
     await wrapper.get('[data-testid="invite-form"]').trigger('submit');
     await flushPromises();
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
-    expect(JSON.parse(postCall?.[1]?.body as string)).toEqual({
+    const postCall = requests.mock.calls.find(([req]) => req.method === 'POST');
+    expect(postCall?.[0].body).toEqual({
       email: 'erin@example.com',
       role: 'substaff',
       passcode: 's3cret',
@@ -101,12 +121,13 @@ describe('ProjectMembersView', () => {
   it('shows a message when the invitee is already a member', async () => {
     stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
-      'GET /api/projects/p1/members': json(members),
+      'GET /api/projects/p1/members': json(initialMembers()),
       'GET /api/projects/p1/invitations': json([]),
       'POST /api/projects/p1/invitations': json({ error: 'already_member' }, 409),
     });
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
+    await flushPromises();
     await wrapper.get('input[aria-label="メールアドレス"]').setValue('bob@example.com');
     await wrapper.get('input[aria-label="暗証番号"]').setValue('1234');
     await wrapper.get('[data-testid="invite-form"]').trigger('submit');
@@ -116,17 +137,30 @@ describe('ProjectMembersView', () => {
   });
 
   it('changes a role, removes a member and cancels an invitation', async () => {
-    const fetchMock = stubApi({
+    let members: ProjectMember[] = initialMembers();
+    let invitations: ProjectInvitation[] = [pending];
+    const requests = stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
-      'GET /api/projects/p1/members': json(members),
-      'GET /api/projects/p1/invitations': json([pending]),
-      'PATCH /api/projects/p1/members/u-bob': (body) =>
-        json(makeMember(bob, body as { role: 'substaff' })),
-      'DELETE /api/projects/p1/members/u-bob': noContent(),
-      'DELETE /api/projects/p1/invitations/inv1': noContent(),
+      'GET /api/projects/p1/members': () => json(members),
+      'GET /api/projects/p1/invitations': () => json(invitations),
+      'PATCH /api/projects/p1/members/u-bob': (body) => {
+        if (!hasRole(body)) throw new Error('Missing role');
+        const updated = makeMember(bob, { role: body.role });
+        members = members.map((m) => (m.userId === bob.id ? updated : m));
+        return json(updated);
+      },
+      'DELETE /api/projects/p1/members/u-bob': () => {
+        members = members.filter((m) => m.userId !== bob.id);
+        return noContent();
+      },
+      'DELETE /api/projects/p1/invitations/inv1': () => {
+        invitations = [];
+        return noContent();
+      },
     });
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
+    await flushPromises();
     const bobRow = () => wrapper.findAll('[data-testid="member"]')[2];
 
     await bobRow()?.get('select').setValue('substaff');
@@ -141,7 +175,53 @@ describe('ProjectMembersView', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="pending-invitation"]').exists()).toBe(false);
 
-    const patchCall = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
-    expect(JSON.parse(patchCall?.[1]?.body as string)).toEqual({ role: 'substaff' });
+    const patchCall = requests.mock.calls.find(([req]) => req.method === 'PATCH');
+    expect(patchCall?.[0].body).toEqual({ role: 'substaff' });
+    expect(requests.mock.calls.filter(([req]) => req.path === '/api/projects/p1')).toHaveLength(1);
+  });
+
+  it('reloads the project after demoting yourself and hides invitation UI', async () => {
+    let role: ProjectRole = 'admin';
+    let members: ProjectMember[] = initialMembers();
+    const requests = stubApi({
+      'GET /api/projects/p1': () => json(makeProject({ role })),
+      'GET /api/projects/p1/members': () => json(members),
+      'GET /api/projects/p1/invitations': json([pending]),
+      'PATCH /api/projects/p1/members/u-carol': (body) => {
+        if (!hasRole(body)) throw new Error('Missing role');
+        role = body.role;
+        const updated = makeMember(carol, { role: body.role });
+        members = members.map((m) => (m.userId === carol.id ? updated : m));
+        return json(updated);
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', carol);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(true);
+
+    await wrapper.findAll('[data-testid="member"]')[1]?.get('select').setValue('staff');
+    await flushPromises();
+
+    expect(requests.mock.calls.filter(([req]) => req.path === '/api/projects/p1')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="pending-invitation"]').exists()).toBe(false);
+    expect(wrapper.find('select').exists()).toBe(false);
+  });
+
+  it('shows a message when changing the owner role is rejected', async () => {
+    stubApi({
+      'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
+      'GET /api/projects/p1/members': json(initialMembers()),
+      'GET /api/projects/p1/invitations': json([]),
+      'PATCH /api/projects/p1/members/u-bob': json({ error: 'owner_immutable' }, 409),
+    });
+
+    const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
+    await flushPromises();
+    await wrapper.findAll('[data-testid="member"]')[2]?.get('select').setValue('admin');
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('オーナーのロールは変更できません');
   });
 });

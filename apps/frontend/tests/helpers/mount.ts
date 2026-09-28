@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
+import { PiniaColada } from '@pinia/colada';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import type { Component } from 'vue';
@@ -34,7 +35,7 @@ export async function mountAt(component: Component, path: string, currentUser: U
   await router.push(path);
   await router.isReady();
 
-  const wrapper = mount(component, { global: { plugins: [pinia, router] } });
+  const wrapper = mount(component, { global: { plugins: [pinia, PiniaColada, router] } });
   await flushPromises();
   return { wrapper, router, pinia };
 }

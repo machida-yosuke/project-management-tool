@@ -3,3 +3,4 @@ dist
 coverage
 .wrangler
 pnpm-lock.yaml
+apps/frontend/src/api/generated

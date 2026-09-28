@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   canManageMembers,
@@ -7,26 +7,52 @@ import {
   type ProjectMember,
   type ProjectRole,
 } from '@pm-tool/shared';
+import {
+  getGetProjectQueryKey,
+  getListMembersQueryKey,
+  getListProjectInvitationsQueryKey,
+  useCreateInvitation,
+  useDeleteInvitation,
+  useGetProject,
+  useListMembers,
+  useListProjectInvitations,
+  useRemoveMember,
+  useUpdateMemberRole,
+} from '../api/generated';
 import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
+import { useInvalidate } from '../lib/query';
 import { ROLE_LABELS } from '../lib/roles';
 import { useAuthStore } from '../stores/auth';
-import { useMembersStore } from '../stores/members';
-import { useProjectsStore } from '../stores/projects';
 
 const route = useRoute();
 const authStore = useAuthStore();
-const projectsStore = useProjectsStore();
-const membersStore = useMembersStore();
+const invalidate = useInvalidate();
 
 const projectId = computed(() => String(route.params.projectId));
-const project = computed(() =>
-  projectsStore.current?.id === projectId.value ? projectsStore.current : null,
-);
+const projectQuery = useGetProject(projectId);
+const membersQuery = useListMembers(projectId);
+
+const project = computed(() => projectQuery.data.value ?? null);
+const members = computed(() => membersQuery.data.value ?? []);
 const isAdmin = computed(() => (project.value ? canManageMembers(project.value.role) : false));
 
-const loadError = ref('');
+const invitationsQuery = useListProjectInvitations(projectId, () => ({
+  query: { enabled: isAdmin.value },
+}));
+const invitations = computed(() => invitationsQuery.data.value ?? []);
+
+const loadError = computed(() => {
+  const e =
+    projectQuery.error.value ?? membersQuery.error.value ?? invitationsQuery.error.value ?? null;
+  if (!e) return '';
+  // Non-members get 404 so the project's existence is not leaked.
+  return e instanceof ApiRequestError && e.status === 404
+    ? 'プロジェクトが見つかりません'
+    : errorMessage(e, {}, 'メンバーの読み込みに失敗しました');
+});
+
 const actionError = ref('');
 const inviteForm = reactive<{ email: string; role: ProjectRole; passcode: string }>({
   email: '',
@@ -34,31 +60,29 @@ const inviteForm = reactive<{ email: string; role: ProjectRole; passcode: string
   passcode: '',
 });
 
-async function loadProject(id: string) {
-  const loaded = await projectsStore.fetchProject(id);
-  if (canManageMembers(loaded.role)) {
-    await membersStore.fetchInvitations(id);
-  } else {
-    membersStore.invitations = [];
-  }
-}
-
-watch(
-  projectId,
-  async (id) => {
-    loadError.value = '';
-    try {
-      await Promise.all([loadProject(id), membersStore.fetchMembers(id)]);
-    } catch (e) {
-      // Non-members get 404 so the project's existence is not leaked.
-      loadError.value =
-        e instanceof ApiRequestError && e.status === 404
-          ? 'プロジェクトが見つかりません'
-          : errorMessage(e, {}, 'メンバーの読み込みに失敗しました');
-    }
+const { mutateAsync: updateMemberRole } = useUpdateMemberRole({
+  mutation: {
+    onSuccess: (_, vars) =>
+      invalidate(
+        getListMembersQueryKey(vars.projectId),
+        // Demoting yourself changes what this page may show.
+        ...(vars.userId === authStore.user?.id ? [getGetProjectQueryKey(vars.projectId)] : []),
+      ),
   },
-  { immediate: true },
-);
+});
+const { mutateAsync: removeMemberRequest } = useRemoveMember({
+  mutation: { onSuccess: (_, vars) => invalidate(getListMembersQueryKey(vars.projectId)) },
+});
+const { mutateAsync: createInvitation } = useCreateInvitation({
+  mutation: {
+    onSuccess: (_, vars) => invalidate(getListProjectInvitationsQueryKey(vars.projectId)),
+  },
+});
+const { mutateAsync: deleteInvitation } = useDeleteInvitation({
+  mutation: {
+    onSuccess: (_, vars) => invalidate(getListProjectInvitationsQueryKey(vars.projectId)),
+  },
+});
 
 async function runAction(action: () => Promise<unknown>, messages: Record<string, string> = {}) {
   actionError.value = '';
@@ -72,30 +96,33 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
 function changeRole(member: ProjectMember, event: Event) {
   const role = eventValue(event) as ProjectRole;
   return runAction(
-    async () => {
-      await membersStore.updateRole(projectId.value, member.userId, role);
-      // Demoting yourself changes what this page may show.
-      if (member.userId === authStore.user?.id) {
-        await loadProject(projectId.value);
-      }
-    },
+    () =>
+      updateMemberRole({
+        projectId: projectId.value,
+        userId: member.userId,
+        updateMemberRoleRequest: { role },
+      }),
     { owner_immutable: 'オーナーのロールは変更できません' },
   );
 }
 
 function removeMember(member: ProjectMember) {
-  return runAction(() => membersStore.removeMember(projectId.value, member.userId), {
-    owner_immutable: 'オーナーは削除できません',
-  });
+  return runAction(
+    () => removeMemberRequest({ projectId: projectId.value, userId: member.userId }),
+    { owner_immutable: 'オーナーは削除できません' },
+  );
 }
 
 function invite() {
   return runAction(
     async () => {
-      await membersStore.createInvitation(projectId.value, {
-        email: inviteForm.email.trim(),
-        role: inviteForm.role,
-        passcode: inviteForm.passcode,
+      await createInvitation({
+        projectId: projectId.value,
+        createInvitationRequest: {
+          email: inviteForm.email.trim(),
+          role: inviteForm.role,
+          passcode: inviteForm.passcode,
+        },
       });
       inviteForm.email = '';
       inviteForm.role = 'staff';
@@ -109,7 +136,7 @@ function invite() {
 }
 
 function cancelInvitation(invitationId: string) {
-  return runAction(() => membersStore.deleteInvitation(projectId.value, invitationId));
+  return runAction(() => deleteInvitation({ projectId: projectId.value, invitationId }));
 }
 
 function canRemove(member: ProjectMember) {
@@ -143,7 +170,7 @@ function formatDate(iso: string) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="member in membersStore.members" :key="member.userId" data-testid="member">
+          <tr v-for="member in members" :key="member.userId" data-testid="member">
             <td>
               <span class="name-cell">
                 <UserAvatar :name="member.name" :avatar-url="member.avatarUrl" />
@@ -209,10 +236,10 @@ function formatDate(iso: string) {
 
         <section>
           <h3>未受諾の招待</h3>
-          <p v-if="membersStore.invitations.length === 0" class="muted">未受諾の招待はありません</p>
+          <p v-if="invitations.length === 0" class="muted">未受諾の招待はありません</p>
           <ul class="list">
             <li
-              v-for="invitation in membersStore.invitations"
+              v-for="invitation in invitations"
               :key="invitation.id"
               data-testid="pending-invitation"
             >

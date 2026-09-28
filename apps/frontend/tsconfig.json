@@ -7,5 +7,5 @@
     "types": ["vite/client"],
     "plugins": [{ "name": "@vue/typescript-plugin" }]
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "orval.config.ts"]
 }

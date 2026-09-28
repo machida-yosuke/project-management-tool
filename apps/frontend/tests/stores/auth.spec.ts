@@ -1,24 +1,18 @@
 import { createPinia, setActivePinia } from 'pinia';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AxiosError } from 'axios';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiRequestError } from '../../src/lib/api';
 import { useAuthStore } from '../../src/stores/auth';
-import { alice, json, noContent, stubApi } from '../helpers/api-mock';
+import { alice, json, noContent, setAdapter, stubApi } from '../helpers/api-mock';
 
 describe('useAuthStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('sets authenticated state when /api/auth/me succeeds', async () => {
     const user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify(user), { status: 200 })),
-    );
+    stubApi({ 'GET /api/auth/me': json(user) });
 
     const store = useAuthStore();
     await store.fetchMe();
@@ -28,7 +22,7 @@ describe('useAuthStore', () => {
   });
 
   it('sets unauthenticated state when /api/auth/me returns 401', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    stubApi({ 'GET /api/auth/me': new Response(null, { status: 401 }) });
 
     const store = useAuthStore();
     await store.fetchMe();
@@ -38,10 +32,24 @@ describe('useAuthStore', () => {
   });
 
   it('clears user state on logout', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const requests = stubApi({ 'POST /api/auth/logout': noContent() });
 
     const store = useAuthStore();
     store.user = { id: '1', email: 'a@example.com', name: 'A', avatarUrl: null };
+    store.status = 'authenticated';
+
+    await store.logout();
+
+    expect(requests).toHaveBeenCalledTimes(1);
+    expect(store.status).toBe('unauthenticated');
+    expect(store.user).toBeNull();
+  });
+
+  it('clears user state on logout even when the request fails', async () => {
+    setAdapter(() => Promise.reject(new AxiosError('Network Error', AxiosError.ERR_NETWORK)));
+
+    const store = useAuthStore();
+    store.user = alice;
     store.status = 'authenticated';
 
     await store.logout();
@@ -50,8 +58,8 @@ describe('useAuthStore', () => {
     expect(store.user).toBeNull();
   });
 
-  it('sets unauthenticated state when fetch itself throws', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+  it('sets unauthenticated state when the request fails without a response', async () => {
+    setAdapter(() => Promise.reject(new AxiosError('Network Error', AxiosError.ERR_NETWORK)));
 
     const store = useAuthStore();
     await store.fetchMe();
@@ -66,8 +74,7 @@ describe('useAuthStore', () => {
     const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
-    const fetchMock = vi.fn().mockReturnValue(fetchPromise);
-    vi.stubGlobal('fetch', fetchMock);
+    const requests = stubApi({ 'GET /api/auth/me': () => fetchPromise });
 
     const store = useAuthStore();
     const first = store.fetchMe();
@@ -80,14 +87,13 @@ describe('useAuthStore', () => {
     const promiseAfterSecondCall = store.fetchMePromise;
 
     expect(promiseAfterSecondCall).toBe(promiseAfterFirstCall);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(store.status).toBe('loading');
 
-    resolveFetch(new Response(JSON.stringify(user), { status: 200 }));
+    resolveFetch(json(user));
     await first;
     await second;
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveBeenCalledTimes(1);
     expect(store.status).toBe('authenticated');
     expect(store.user).toEqual(user);
     expect(store.fetchMePromise).toBeNull();
@@ -102,7 +108,7 @@ describe('useAuthStore', () => {
     }
 
     it('updates the name', async () => {
-      const fetchMock = stubApi({
+      const requests = stubApi({
         'PATCH /api/me': (body) => json({ ...alice, ...(body as { name: string }) }),
       });
       const store = signedIn();
@@ -110,8 +116,10 @@ describe('useAuthStore', () => {
       await store.updateName('Alicia');
 
       expect(store.user).toEqual({ ...alice, name: 'Alicia' });
-      const [, init] = fetchMock.mock.calls[0] ?? [];
-      expect(init?.method).toBe('PATCH');
+      expect(requests.mock.calls[0]?.[0]).toMatchObject({
+        method: 'PATCH',
+        body: { name: 'Alicia' },
+      });
     });
 
     it('uploads an avatar as multipart form data under "file"', async () => {

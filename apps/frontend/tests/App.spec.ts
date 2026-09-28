@@ -1,28 +1,26 @@
 import { createPinia } from 'pinia';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PiniaColada } from '@pinia/colada';
+import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { router } from '../src/router';
 import App from '../src/App.vue';
 import { useAuthStore } from '../src/stores/auth';
+import { stubApi } from './helpers/api-mock';
 
 describe('App', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('renders the app title', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    stubApi({ 'GET /api/auth/me': new Response(null, { status: 401 }) });
     await router.push('/login');
-    const wrapper = mount(App, { global: { plugins: [createPinia(), router] } });
+    const wrapper = mount(App, { global: { plugins: [createPinia(), PiniaColada, router] } });
 
     expect(wrapper.text()).toContain('Project Management Tool');
   });
 
   it('shows the user name and a logout button when authenticated', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    stubApi({ 'GET /api/auth/me': new Response(null, { status: 401 }) });
     await router.push('/login');
     const pinia = createPinia();
-    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    const wrapper = mount(App, { global: { plugins: [pinia, PiniaColada, router] } });
 
     const authStore = useAuthStore(pinia);
     authStore.status = 'authenticated';
