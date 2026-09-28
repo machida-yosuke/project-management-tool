@@ -5,7 +5,7 @@ import TimelineItem from './TimelineItem.vue';
 const meta = {
   component: TimelineItem,
   args: {
-    author: { name: 'Taro Yamada', avatarUrl: null },
+    author: { id: 'u-taro', name: 'Taro Yamada', avatarUrl: null },
     createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
   },
 } satisfies Meta<typeof TimelineItem>;

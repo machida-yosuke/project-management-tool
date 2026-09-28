@@ -112,7 +112,7 @@ function grab(event: PointerEvent, task: Task, mode: DragMode) {
         :class="[
           { weekend: day.weekend, today: day.today },
           day.today
-            ? 'bg-primary font-bold text-primary-foreground'
+            ? 'bg-info font-bold text-info-foreground'
             : day.weekend
               ? 'bg-foreground/5 text-muted-foreground'
               : '',

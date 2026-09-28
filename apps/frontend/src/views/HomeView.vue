@@ -168,11 +168,12 @@ async function acceptInvitation(invitationId: string) {
               <CardHeader class="px-4">
                 <CardTitle class="flex items-center gap-2">
                   {{ invitation.projectName }}
-                  <Badge variant="secondary">{{ ROLE_LABELS[invitation.role] }}</Badge>
+                  <Badge variant="warning">{{ ROLE_LABELS[invitation.role] }}</Badge>
                 </CardTitle>
                 <CardDescription class="flex items-center gap-1">
                   招待者:
                   <UserAvatar
+                    :user-id="invitation.invitedBy.id"
                     :name="invitation.invitedBy.name"
                     :avatar-url="invitation.invitedBy.avatarUrl"
                     :size="20"
@@ -221,7 +222,7 @@ async function acceptInvitation(invitationId: string) {
                 <CardHeader class="px-4">
                   <CardTitle class="truncate">{{ project.name }}</CardTitle>
                   <CardAction>
-                    <Badge variant="secondary">{{ ROLE_LABELS[project.role] }}</Badge>
+                    <Badge variant="info">{{ ROLE_LABELS[project.role] }}</Badge>
                   </CardAction>
                 </CardHeader>
                 <CardContent class="px-4">

@@ -13,6 +13,7 @@ import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { addDays, startOfWeek, todayString, type DateString } from '../lib/dates';
+import { dueStateClass } from '../lib/due-state';
 
 const WEEK_TASK_LIMIT = 5;
 const COMMENT_LIMIT = 5;
@@ -99,12 +100,17 @@ function taskPeriod(task: Task) {
                     data-testid="week-task-label"
                   />
                 </div>
-                <p class="mt-1 text-xs text-muted-foreground" data-testid="week-task-period">
+                <p
+                  class="mt-1 text-xs"
+                  :class="dueStateClass(task.endDate, task.status) || 'text-muted-foreground'"
+                  data-testid="week-task-period"
+                >
                   {{ taskPeriod(task) }}
                 </p>
               </div>
               <UserAvatar
                 v-if="task.assignee"
+                :user-id="task.assignee.id"
                 :name="task.assignee.name"
                 :avatar-url="task.assignee.avatarUrl"
                 :size="20"
@@ -129,6 +135,7 @@ function taskPeriod(task: Task) {
                 class="flex min-h-10 flex-wrap items-center gap-2 border-b bg-muted/50 px-4 py-1.5 text-sm"
               >
                 <UserAvatar
+                  :user-id="comment.author.id"
                   :name="comment.author.name"
                   :avatar-url="comment.author.avatarUrl"
                   :size="20"

@@ -23,7 +23,11 @@ const authStore = useAuthStore();
           class="flex items-center gap-2 rounded-md px-2 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
           data-testid="user-menu"
         >
-          <UserAvatar :name="authStore.user.name" :avatar-url="authStore.user.avatarUrl" />
+          <UserAvatar
+            :user-id="authStore.user.id"
+            :name="authStore.user.name"
+            :avatar-url="authStore.user.avatarUrl"
+          />
           <span>{{ authStore.user.name }}</span>
           <ChevronDown class="size-4 text-muted-foreground" />
         </DropdownMenuTrigger>

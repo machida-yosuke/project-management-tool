@@ -148,7 +148,7 @@ function onInteractOutside(event: Event) {
           cn(
             'border-b-2 pb-2 transition-colors',
             tab.active
-              ? 'border-foreground text-foreground'
+              ? 'border-info text-info'
               : 'border-transparent text-muted-foreground hover:text-foreground',
           )
         "

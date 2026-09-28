@@ -141,6 +141,29 @@ describe('ProjectView', () => {
       expect(doneRow.get('[data-testid="task-meta"]').text()).toBe('Alice が 3 日前 に作成');
       expect(doneRow.find('[data-testid="task-assignee"]').exists()).toBe(false);
     });
+
+    it('colors the period of an open task that is overdue or due soon', async () => {
+      stubApi(
+        baseRoutes('substaff', () => [
+          makeTask({ id: 't1', endDate: '2026-09-03' }),
+          makeTask({ id: 't2', startDate: '2026-09-01', endDate: '2026-09-06' }),
+          makeTask({ id: 't3', endDate: '2026-09-07' }),
+        ]),
+      );
+
+      const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
+
+      const periods = wrapper.findAll('[data-testid="task-period"]');
+      expect(periods.map((p) => p.text())).toEqual([
+        '〜 2026-09-03',
+        '2026-09-01 〜 2026-09-06',
+        '〜 2026-09-07',
+      ]);
+      expect(periods[0]?.classes()).toContain('text-destructive');
+      expect(periods[1]?.classes()).toContain('text-warning');
+      expect(periods[2]?.classes()).not.toContain('text-warning');
+      expect(periods[2]?.classes()).not.toContain('text-destructive');
+    });
   });
 
   it('shows edit controls for staff', async () => {

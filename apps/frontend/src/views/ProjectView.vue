@@ -25,6 +25,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
+import { dueStateClass } from '../lib/due-state';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 
 const route = useRoute();
@@ -95,13 +96,9 @@ function onCreateTaskInteractOutside(event: Event) {
   if (creatingTask.value) event.preventDefault();
 }
 
-function taskMetaSuffix(task: Task) {
-  const parts: string[] = [];
-  if (task.startDate || task.endDate) {
-    parts.push(`${task.startDate ?? ''} 〜 ${task.endDate ?? ''}`.trim());
-  }
-  if (task.archivedAt !== null) parts.push('アーカイブ済み');
-  return parts.map((part) => ` · ${part}`).join('');
+function taskPeriod(task: Task) {
+  if (!task.startDate && !task.endDate) return '';
+  return `${task.startDate ?? ''} 〜 ${task.endDate ?? ''}`.trim();
 }
 </script>
 
@@ -164,7 +161,7 @@ function taskMetaSuffix(task: Task) {
                 data-testid="filter-open"
                 @click="statusFilter = 'open'"
               >
-                <CircleDot class="size-4" aria-hidden="true" />
+                <CircleDot class="size-4 text-success" aria-hidden="true" />
                 未完了 {{ openCount }}
               </button>
               <button
@@ -179,7 +176,7 @@ function taskMetaSuffix(task: Task) {
                 data-testid="filter-done"
                 @click="statusFilter = 'done'"
               >
-                <CircleCheck class="size-4" aria-hidden="true" />
+                <CircleCheck class="size-4 text-info" aria-hidden="true" />
                 完了 {{ doneCount }}
               </button>
             </div>
@@ -216,11 +213,19 @@ function taskMetaSuffix(task: Task) {
                 <p class="mt-1 text-xs text-muted-foreground" data-testid="task-meta">
                   {{ task.createdBy.name }} が
                   <RelativeTime :datetime="task.createdAt" />
-                  に作成{{ taskMetaSuffix(task) }}
+                  に作成<template v-if="taskPeriod(task)">
+                    ·
+                    <span
+                      :class="dueStateClass(task.endDate, task.status)"
+                      data-testid="task-period"
+                      >{{ taskPeriod(task) }}</span
+                    ></template
+                  ><template v-if="task.archivedAt !== null"> · アーカイブ済み</template>
                 </p>
               </div>
               <UserAvatar
                 v-if="task.assignee"
+                :user-id="task.assignee.id"
                 :name="task.assignee.name"
                 :avatar-url="task.assignee.avatarUrl"
                 :size="20"

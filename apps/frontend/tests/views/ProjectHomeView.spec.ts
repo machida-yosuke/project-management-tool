@@ -247,6 +247,29 @@ describe('ProjectHomeView', () => {
     expect(second?.find('[data-testid="week-task-label"]').exists()).toBe(false);
   });
 
+  it('colors the period by how close the end date is', async () => {
+    stubApi(
+      baseRoutes('staff', () => [
+        makeTask({ id: 'overdue', startDate: '2026-09-28', endDate: '2026-09-29' }),
+        makeTask({ id: 'soon', startDate: '2026-09-29', endDate: '2026-10-02' }),
+        makeTask({ id: 'later', startDate: '2026-09-30', endDate: '2026-10-03' }),
+        makeTask({ id: 'done', status: 'done', startDate: '2026-10-01', endDate: '2026-10-01' }),
+      ]),
+    );
+
+    const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);
+
+    const classes = wrapper
+      .findAll('[data-testid="week-task-period"]')
+      .map((p) => p.classes().filter((c) => c.startsWith('text-') && c !== 'text-xs'));
+    expect(classes).toEqual([
+      ['text-destructive'],
+      ['text-warning'],
+      ['text-muted-foreground'],
+      ['text-muted-foreground'],
+    ]);
+  });
+
   it('shows at most five tasks for this week', async () => {
     const tasks = [
       '2026-10-03',

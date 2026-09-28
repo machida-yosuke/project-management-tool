@@ -1,5 +1,5 @@
 import { enableAutoUnmount, flushPromises, type DOMWrapper } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   plainTextToRichTextDoc,
   type ProjectRole,
@@ -197,6 +197,20 @@ describe('TaskDetailView', () => {
     expect(requestLines(requests)).not.toContain(LABELS);
     expect(wrapper.find('[data-testid="create-comment"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Looks good');
+  });
+
+  it('colors an overdue end date for an open task only', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 5, 12, 0));
+    try {
+      stubApi(baseRoutes('substaff', () => [makeTask({ endDate: '2026-10-03' })]));
+      const { wrapper } = await mountAt(TaskDetailView, PATH, bob);
+      const endDate = wrapper.get('[data-testid="task-end-date"]');
+      expect(endDate.text()).toBe('2026-10-03');
+      expect(endDate.classes()).toContain('text-destructive');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows unset dates and an unassigned task as text for substaff', async () => {

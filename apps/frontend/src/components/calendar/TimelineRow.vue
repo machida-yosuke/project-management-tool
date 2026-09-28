@@ -47,7 +47,7 @@ const emit = defineEmits<{
         v-for="day in days"
         :key="day.date"
         class="w-(--column-width) flex-none border-l border-border/40"
-        :class="day.today ? 'bg-primary/10' : day.weekend ? 'bg-muted/60' : ''"
+        :class="day.today ? 'bg-info/10' : day.weekend ? 'bg-muted/60' : ''"
       />
       <TaskBand
         v-if="span"

@@ -7,7 +7,7 @@ const meta = {
   argTypes: {
     variant: {
       control: 'select',
-      options: ['default', 'secondary', 'destructive', 'outline'],
+      options: ['default', 'secondary', 'destructive', 'outline', 'success', 'warning', 'info'],
     },
   },
   render: (args) => ({
@@ -27,7 +27,15 @@ export const Variants: Story = {
     components: { Badge },
     setup: () => ({
       args,
-      variants: ['default', 'secondary', 'destructive', 'outline'] as const,
+      variants: [
+        'default',
+        'secondary',
+        'destructive',
+        'outline',
+        'success',
+        'warning',
+        'info',
+      ] as const,
     }),
     template: `
       <div class="flex flex-wrap gap-2">

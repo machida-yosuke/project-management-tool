@@ -53,7 +53,7 @@ describe('ProjectHeader', () => {
     const wrapper = await mountAt(path);
 
     expect(wrapper.findAll('nav a[aria-current="page"]').map((a) => a.text())).toEqual([label]);
-    expect(wrapper.get('nav a[aria-current="page"]').classes()).toContain('border-foreground');
+    expect(wrapper.get('nav a[aria-current="page"]').classes()).toContain('border-info');
   });
 
   it.each([

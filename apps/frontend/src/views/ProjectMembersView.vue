@@ -313,11 +313,15 @@ function formatDate(iso: string) {
                 >
                   <TableCell class="px-4 py-3">
                     <div class="flex items-center gap-3">
-                      <UserAvatar :name="member.name" :avatar-url="member.avatarUrl" />
+                      <UserAvatar
+                        :user-id="member.userId"
+                        :name="member.name"
+                        :avatar-url="member.avatarUrl"
+                      />
                       <div class="flex flex-col">
                         <span class="flex items-center gap-2 font-medium">
                           {{ member.name }}
-                          <Badge v-if="member.isOwner" variant="secondary">オーナー</Badge>
+                          <Badge v-if="member.isOwner" variant="warning">オーナー</Badge>
                         </span>
                         <span class="text-xs text-muted-foreground">{{ member.email }}</span>
                       </div>
@@ -338,7 +342,7 @@ function formatDate(iso: string) {
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    <Badge v-else variant="outline">{{ ROLE_LABELS[member.role] }}</Badge>
+                    <Badge v-else variant="info">{{ ROLE_LABELS[member.role] }}</Badge>
                   </TableCell>
                   <TableCell v-if="isAdmin" class="px-4 py-3 text-right">
                     <AlertDialog v-if="canRemove(member)">
@@ -401,7 +405,7 @@ function formatDate(iso: string) {
                 >
                   <TableCell class="px-4 py-3">{{ invitation.email }}</TableCell>
                   <TableCell class="px-4 py-3">
-                    <Badge variant="outline">{{ ROLE_LABELS[invitation.role] }}</Badge>
+                    <Badge variant="warning">{{ ROLE_LABELS[invitation.role] }}</Badge>
                   </TableCell>
                   <TableCell class="px-4 py-3 text-muted-foreground">
                     {{ formatDate(invitation.expiresAt) }}

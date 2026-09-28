@@ -16,7 +16,7 @@ const a11y = computed(() =>
 );
 const colorClass = computed(() => {
   if (props.decorative) return '';
-  return done.value ? 'text-purple-600' : 'text-green-600';
+  return done.value ? 'text-info' : 'text-success';
 });
 </script>
 

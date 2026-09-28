@@ -196,6 +196,7 @@ async function deleteAccount() {
         <CardContent class="space-y-4">
           <div class="flex items-center gap-4">
             <UserAvatar
+              :user-id="authStore.user.id"
               :name="authStore.user.name"
               :avatar-url="authStore.user.avatarUrl"
               :size="80"

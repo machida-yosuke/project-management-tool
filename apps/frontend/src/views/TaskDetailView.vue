@@ -37,6 +37,7 @@ import {
 } from '../components/ui/select';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
+import { dueStateClass } from '../lib/due-state';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 import { useAuthStore } from '../stores/auth';
 
@@ -257,6 +258,7 @@ function formatTimestamp(iso: string) {
               <p v-else class="flex items-center gap-1.5">
                 <UserAvatar
                   v-if="task.assignee"
+                  :user-id="task.assignee.id"
                   :name="task.assignee.name"
                   :avatar-url="task.assignee.avatarUrl"
                   :size="20"
@@ -314,6 +316,7 @@ function formatTimestamp(iso: string) {
                   id="task-end-date"
                   type="date"
                   class="h-8"
+                  :class="dueStateClass(task.endDate, task.status)"
                   aria-label="終了日"
                   :model-value="task.endDate ?? ''"
                   @change="changeDate(task, 'endDate', $event)"
@@ -328,7 +331,14 @@ function formatTimestamp(iso: string) {
                   {{ task.startDate ?? '未設定' }}
                 </dd>
                 <dt class="text-muted-foreground">終了</dt>
-                <dd :class="{ 'text-muted-foreground': !task.endDate }" data-testid="task-end-date">
+                <dd
+                  :class="
+                    task.endDate
+                      ? dueStateClass(task.endDate, task.status)
+                      : 'text-muted-foreground'
+                  "
+                  data-testid="task-end-date"
+                >
                   {{ task.endDate ?? '未設定' }}
                 </dd>
               </dl>
@@ -337,6 +347,7 @@ function formatTimestamp(iso: string) {
             <SidebarSection title="作成者">
               <p class="flex items-center gap-1.5">
                 <UserAvatar
+                  :user-id="task.createdBy.id"
                   :name="task.createdBy.name"
                   :avatar-url="task.createdBy.avatarUrl"
                   :size="20"

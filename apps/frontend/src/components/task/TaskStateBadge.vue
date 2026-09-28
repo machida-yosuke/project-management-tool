@@ -7,8 +7,8 @@ defineProps<{ status: TaskStatus }>();
 
 <template>
   <span
-    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-white"
-    :class="status === 'done' ? 'bg-purple-600' : 'bg-green-600'"
+    class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium"
+    :class="status === 'done' ? 'bg-info/15 text-info' : 'bg-success/15 text-success'"
   >
     <TaskStateIcon :status="status" decorative />
     {{ status === 'done' ? '完了' : '未完了' }}
