@@ -92,7 +92,7 @@ describe('ProjectCalendarView', () => {
 
     const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
 
-    expect(wrapper.get('h1').text()).toBe('Project One');
+    expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.get('a[aria-current="page"]').text()).toBe('カレンダー');
     expect(label(wrapper)).toBe('2026年9月');
     const headers = wrapper.findAll('[data-date]');

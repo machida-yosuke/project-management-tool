@@ -4,7 +4,7 @@ import { emptyRichTextDoc, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool
 import { getListCommentsQueryKey, useCreateComment, useUpdateComment } from '../api/generated';
 import type { TaskComment } from '../api/generated/models';
 import { draftKeys } from '../lib/drafts';
-import { useInvalidate } from '../lib/query';
+import { listProjectCommentsKeyPrefix, useInvalidate } from '../lib/query';
 import RichTextContent from './rich-text/RichTextContent.vue';
 import RichTextForm from './rich-text/RichTextForm.vue';
 import TimelineItem from './task/TimelineItem.vue';
@@ -28,7 +28,10 @@ const invalidate = useInvalidate();
 const editingCommentId = ref<string | null>(null);
 
 const invalidateComments = (_: unknown, vars: { projectId: string; taskId: string }) =>
-  invalidate(getListCommentsQueryKey(vars.projectId, vars.taskId));
+  invalidate(
+    getListCommentsQueryKey(vars.projectId, vars.taskId),
+    listProjectCommentsKeyPrefix(vars.projectId),
+  );
 const createCommentMutation = useCreateComment({ mutation: { onSuccess: invalidateComments } });
 const updateCommentMutation = useUpdateComment({ mutation: { onSuccess: invalidateComments } });
 

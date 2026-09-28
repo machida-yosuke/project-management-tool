@@ -25,7 +25,8 @@ const invalidate = useInvalidate();
 
 const tabs = computed(() =>
   [
-    { name: 'project', label: 'タスク', routeNames: ['project', 'task'] },
+    { name: 'project', label: 'ホーム', routeNames: ['project'] },
+    { name: 'project-tasks', label: 'タスク', routeNames: ['project-tasks', 'task'] },
     { name: 'project-calendar', label: 'カレンダー', routeNames: ['project-calendar'] },
     { name: 'project-members', label: 'メンバー', routeNames: ['project-members'] },
   ].map(({ routeNames, ...tab }) => ({
@@ -36,6 +37,7 @@ const tabs = computed(() =>
   })),
 );
 
+const isHome = computed(() => route.name === 'project');
 const editable = computed(() => canEdit(props.project.role));
 
 const editOpen = ref(false);
@@ -87,50 +89,55 @@ function onInteractOutside(event: Event) {
 
 <template>
   <div class="mb-6 border-b">
-    <div class="flex items-center gap-2">
-      <h1 class="text-2xl font-semibold tracking-tight">{{ project.name }}</h1>
-      <Dialog v-if="editable" v-model:open="editOpen">
-        <DialogTrigger as-child>
-          <Button type="button" variant="ghost" size="icon" aria-label="プロジェクトを編集">
-            <Pencil aria-hidden="true" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent class="sm:max-w-2xl" @interact-outside="onInteractOutside">
-          <DialogHeader>
-            <DialogTitle>プロジェクトを編集</DialogTitle>
-          </DialogHeader>
-          <RichTextForm
-            :key="`${project.id}:${editOpenCount}`"
-            data-testid="edit-project"
-            :project-id="project.id"
-            :draft-key="draftKeys.projectDescription(project.id)"
-            :initial-doc="project.description"
-            label="概要"
-            placeholder="概要を書く"
-            submit-label="保存"
-            allow-empty
-            :error-messages="EDIT_PROJECT_ERRORS"
-            :submit="saveProject"
-            @submitted="editOpen = false"
-          >
-            <Input
-              v-model="editName"
-              type="text"
-              required
-              maxlength="200"
-              aria-label="プロジェクトの名前"
-            />
-          </RichTextForm>
-        </DialogContent>
-      </Dialog>
-    </div>
-    <RichTextContent
-      v-if="!isRichTextDocEmpty(project.description)"
-      class="mt-2 text-sm text-muted-foreground"
-      data-testid="project-description"
-      :doc="project.description"
-    />
-    <nav class="mt-4 -mb-px flex gap-6 text-sm font-medium" aria-label="プロジェクト">
+    <template v-if="isHome">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-semibold tracking-tight">{{ project.name }}</h1>
+        <Dialog v-if="editable" v-model:open="editOpen">
+          <DialogTrigger as-child>
+            <Button type="button" variant="ghost" size="icon" aria-label="プロジェクトを編集">
+              <Pencil aria-hidden="true" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent class="sm:max-w-2xl" @interact-outside="onInteractOutside">
+            <DialogHeader>
+              <DialogTitle>プロジェクトを編集</DialogTitle>
+            </DialogHeader>
+            <RichTextForm
+              :key="`${project.id}:${editOpenCount}`"
+              data-testid="edit-project"
+              :project-id="project.id"
+              :draft-key="draftKeys.projectDescription(project.id)"
+              :initial-doc="project.description"
+              label="概要"
+              placeholder="概要を書く"
+              submit-label="保存"
+              allow-empty
+              :error-messages="EDIT_PROJECT_ERRORS"
+              :submit="saveProject"
+              @submitted="editOpen = false"
+            >
+              <Input
+                v-model="editName"
+                type="text"
+                required
+                maxlength="200"
+                aria-label="プロジェクトの名前"
+              />
+            </RichTextForm>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <RichTextContent
+        v-if="!isRichTextDocEmpty(project.description)"
+        class="mt-2 text-sm text-muted-foreground"
+        data-testid="project-description"
+        :doc="project.description"
+      />
+    </template>
+    <nav
+      :class="cn('-mb-px flex gap-6 text-sm font-medium', isHome && 'mt-4')"
+      aria-label="プロジェクト"
+    >
       <RouterLink
         v-for="tab in tabs"
         :key="tab.name"

@@ -1,5 +1,5 @@
 import { useQueryCache, type EntryKey } from '@pinia/colada';
-import { getListTasksQueryKey } from '../api/generated';
+import { getListProjectCommentsQueryKey, getListTasksQueryKey } from '../api/generated';
 
 export function useInvalidate() {
   const cache = useQueryCache();
@@ -14,4 +14,8 @@ export function useInvalidate() {
 // The generated key ends with `params ?? null`, so drop it to prefix-match every `includeArchived` variant.
 export function listTasksKeyPrefix(projectId: string): EntryKey {
   return getListTasksQueryKey(projectId).slice(0, 3);
+}
+
+export function listProjectCommentsKeyPrefix(projectId: string): EntryKey {
+  return getListProjectCommentsQueryKey(projectId).slice(0, 3);
 }

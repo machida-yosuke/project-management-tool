@@ -95,11 +95,11 @@ describe('TaskDetailView', () => {
 
     const { wrapper } = await mountAt(TaskDetailView, PATH, bob);
 
-    expect(wrapper.get('h1').text()).toBe('Project One');
+    expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.get('nav a[aria-current="page"]').text()).toBe('タスク');
     const back = wrapper.get('[data-testid="back-to-tasks"]');
     expect(back.text()).toBe('← タスク一覧');
-    expect(back.attributes('href')).toBe('/projects/p1');
+    expect(back.attributes('href')).toBe('/projects/p1/tasks');
     const header = wrapper.get('[data-testid="task-header"]');
     expect(header.get('h2').text()).toBe('Write spec');
     expect(header.get('[data-testid="task-status"]').text()).toBe('未完了');
@@ -442,7 +442,7 @@ describe('TaskDetailView', () => {
     expect(wrapper.text()).toContain('タスクが見つかりません');
     expect(wrapper.find('[data-testid="task-header"]').exists()).toBe(false);
     const links = wrapper.findAll('a').filter((a) => a.text() === 'タスク一覧へ戻る');
-    expect(links.map((a) => a.attributes('href'))).toEqual(['/projects/p1']);
+    expect(links.map((a) => a.attributes('href'))).toEqual(['/projects/p1/tasks']);
     expect(requestLines(requests)).not.toContain('GET /api/projects/p1/tasks/t1/comments');
   });
 

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import ProjectCalendarView from '../views/ProjectCalendarView.vue';
+import ProjectHomeView from '../views/ProjectHomeView.vue';
 import ProjectMembersView from '../views/ProjectMembersView.vue';
 import ProjectView from '../views/ProjectView.vue';
 import SettingsView from '../views/SettingsView.vue';
@@ -16,6 +17,12 @@ export const router = createRouter({
     {
       path: '/projects/:projectId',
       name: 'project',
+      component: ProjectHomeView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/tasks',
+      name: 'project-tasks',
       component: ProjectView,
       meta: { requiresAuth: true },
     },

@@ -13,6 +13,7 @@ async function mountAt(path: string) {
     history: createMemoryHistory(),
     routes: [
       { path: '/projects/:projectId', name: 'project', component: Stub },
+      { path: '/projects/:projectId/tasks', name: 'project-tasks', component: Stub },
       { path: '/projects/:projectId/tasks/:taskId', name: 'task', component: Stub },
       { path: '/projects/:projectId/calendar', name: 'project-calendar', component: Stub },
       { path: '/projects/:projectId/members', name: 'project-members', component: Stub },
@@ -32,14 +33,16 @@ describe('ProjectHeader', () => {
 
     expect(wrapper.get('h1').text()).toBe('Project One');
     expect(wrapper.findAll('nav a').map((a) => [a.text(), a.attributes('href')] as const)).toEqual([
-      ['タスク', '/projects/p1'],
+      ['ホーム', '/projects/p1'],
+      ['タスク', '/projects/p1/tasks'],
       ['カレンダー', '/projects/p1/calendar'],
       ['メンバー', '/projects/p1/members'],
     ]);
   });
 
   it.each([
-    ['/projects/p1', 'タスク'],
+    ['/projects/p1', 'ホーム'],
+    ['/projects/p1/tasks', 'タスク'],
     ['/projects/p1/tasks/t1', 'タスク'],
     ['/projects/p1/calendar', 'カレンダー'],
     ['/projects/p1/members', 'メンバー'],
@@ -48,5 +51,18 @@ describe('ProjectHeader', () => {
 
     expect(wrapper.findAll('nav a[aria-current="page"]').map((a) => a.text())).toEqual([label]);
     expect(wrapper.get('nav a[aria-current="page"]').classes()).toContain('border-foreground');
+  });
+
+  it.each([
+    '/projects/p1/tasks',
+    '/projects/p1/tasks/t1',
+    '/projects/p1/calendar',
+    '/projects/p1/members',
+  ])('renders only the tabs on %s', async (path) => {
+    const wrapper = await mountAt(path);
+
+    expect(wrapper.find('h1').exists()).toBe(false);
+    expect(wrapper.find('button[aria-label="プロジェクトを編集"]').exists()).toBe(false);
+    expect(wrapper.findAll('nav a')).toHaveLength(4);
   });
 });

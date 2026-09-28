@@ -1,16 +1,11 @@
-import {
-  enableAutoUnmount,
-  flushPromises,
-  type DOMWrapper,
-  type VueWrapper,
-} from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, type DOMWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { plainTextToRichTextDoc, type Project, type ProjectRole, type Task } from '@pm-tool/shared';
+import { plainTextToRichTextDoc, type ProjectRole, type Task } from '@pm-tool/shared';
 import ProjectView from '../../src/views/ProjectView.vue';
 import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
-import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
+import { editorFor, typeInto } from '../helpers/rich-text';
 
 const INCLUDE_ARCHIVED = '[role="checkbox"]#include-archived';
 
@@ -19,29 +14,6 @@ function baseRoutes(role: ProjectRole, tasks: () => Task[] = () => [makeTask({ a
     'GET /api/projects/p1': json(makeProject({ role })),
     'GET /api/projects/p1/tasks': () => json(tasks()),
   };
-}
-
-const EDIT_PROJECT = 'button[aria-label="プロジェクトを編集"]';
-
-function editableProject(role: ProjectRole = 'admin') {
-  let current = makeProject({ role, description: plainTextToRichTextDoc('Old summary') });
-  return stubApi({
-    ...baseRoutes(role),
-    'GET /api/projects/p1': () => json(current),
-    'GET /api/projects': () => json([current]),
-    'PATCH /api/projects/p1': (body) => {
-      current = { ...current, ...(body as Partial<Project>) };
-      return json(current);
-    },
-  });
-}
-
-async function openEditProject(wrapper: VueWrapper) {
-  await wrapper.get(EDIT_PROJECT).trigger('click');
-  await flushPromises();
-  const dialog = currentDialog();
-  if (!dialog) throw new Error('Edit project dialog did not open');
-  return dialog;
 }
 
 function findButton(scope: Pick<DOMWrapper<Element>, 'findAll'>, text: string) {
@@ -57,46 +29,26 @@ describe('ProjectView', () => {
     localStorage.clear();
   });
 
-  it('shows the project header with the tasks tab as current', async () => {
+  it('shows only the tabs of the project header with the tasks tab as current', async () => {
     stubApi(baseRoutes('substaff'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     const nav = wrapper.get('nav[aria-label="プロジェクト"]');
     expect(nav.findAll('a').map((a) => [a.text(), a.attributes('href')])).toEqual([
-      ['タスク', '/projects/p1'],
+      ['ホーム', '/projects/p1'],
+      ['タスク', '/projects/p1/tasks'],
       ['カレンダー', '/projects/p1/calendar'],
       ['メンバー', '/projects/p1/members'],
     ]);
     expect(nav.get('a[aria-current="page"]').text()).toBe('タスク');
-  });
-
-  it('shows the project description as rich text', async () => {
-    stubApi({
-      ...baseRoutes('staff'),
-      'GET /api/projects/p1': json(
-        makeProject({ role: 'staff', description: plainTextToRichTextDoc('Line 1\nLine 2') }),
-      ),
-    });
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
-
-    const paragraphs = wrapper.get('[data-testid="project-description"]').findAll('p');
-    expect(paragraphs.map((p) => p.text())).toEqual(['Line 1', 'Line 2']);
-  });
-
-  it('hides an empty project description', async () => {
-    stubApi(baseRoutes('staff'));
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
-
-    expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+    expect(wrapper.find('h1').exists()).toBe(false);
   });
 
   it('shows an empty state when there are no tasks', async () => {
     stubApi(baseRoutes('staff', () => []));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     expect(wrapper.find('[data-testid="task"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('未完了のタスクはありません');
@@ -111,7 +63,7 @@ describe('ProjectView', () => {
       ]),
     );
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
     const openFilter = wrapper.get('[data-testid="filter-open"]');
     const doneFilter = wrapper.get('[data-testid="filter-done"]');
     const titles = () =>
@@ -137,7 +89,7 @@ describe('ProjectView', () => {
   it('shows an empty state for the done filter when nothing is done', async () => {
     stubApi(baseRoutes('staff', () => [makeTask()]));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
     await wrapper.get('[data-testid="filter-done"]').trigger('click');
 
     expect(wrapper.find('[data-testid="task"]').exists()).toBe(false);
@@ -167,7 +119,7 @@ describe('ProjectView', () => {
         ]),
       );
 
-      const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+      const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
       const row = wrapper.get('[data-testid="task"]');
       expect(row.get('[role="img"]').attributes('aria-label')).toBe('未完了');
@@ -193,7 +145,7 @@ describe('ProjectView', () => {
   it('shows edit controls for staff', async () => {
     stubApi(baseRoutes('staff'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     expect(wrapper.find('[data-testid="create-task"]').exists()).toBe(false);
     const dialog = await openDialog(wrapper, 'タスクを作成');
@@ -201,83 +153,10 @@ describe('ProjectView', () => {
     expect(dialog.find('[data-testid="create-task"]').exists()).toBe(true);
   });
 
-  it.each(['admin', 'staff'] as const)('prefills the edit project dialog for %s', async (role) => {
-    editableProject(role);
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
-    const dialog = await openEditProject(wrapper);
-
-    expect(dialog.text()).toContain('プロジェクトを編集');
-    expect(inputValue(dialog.get('input[aria-label="プロジェクトの名前"]'))).toBe('Project One');
-    expect(editorFor(dialog, '概要').getText()).toBe('Old summary');
-  });
-
-  it('saves the name and description in one request and refetches the project', async () => {
-    const requests = editableProject();
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
-    const form = (await openEditProject(wrapper)).get('[data-testid="edit-project"]');
-    await form.get('input[aria-label="プロジェクトの名前"]').setValue('  Renamed  ');
-    await replaceContent(form, '概要', 'New summary');
-    await form.trigger('submit');
-    await flushPromises();
-
-    const calls = requests.mock.calls.map(([req]) => req);
-    expect(calls.filter((req) => req.method === 'PATCH').map((req) => req.body)).toEqual([
-      { name: 'Renamed', description: plainTextToRichTextDoc('New summary') },
-    ]);
-    expect(
-      calls.filter((req) => req.method === 'GET' && req.path === '/api/projects/p1'),
-    ).toHaveLength(2);
-    expect(currentDialog()).toBeNull();
-    expect(wrapper.get('h1').text()).toBe('Renamed');
-    expect(wrapper.get('[data-testid="project-description"]').text()).toBe('New summary');
-    expect(localStorage.getItem('draft:project:p1:description')).toBeNull();
-
-    const reopened = await openEditProject(wrapper);
-    expect(inputValue(reopened.get('input[aria-label="プロジェクトの名前"]'))).toBe('Renamed');
-    expect(editorFor(reopened, '概要').getText()).toBe('New summary');
-  });
-
-  it('shows an edit project error inside the dialog and keeps it open', async () => {
-    stubApi({
-      ...baseRoutes('admin'),
-      'PATCH /api/projects/p1': json({ error: 'validation_error' }, 400),
-    });
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
-    const form = (await openEditProject(wrapper)).get('[data-testid="edit-project"]');
-    await form.trigger('submit');
-    await flushPromises();
-
-    expect(currentDialog()).not.toBeNull();
-    expect(form.get('[role="alert"]').text()).toBe(
-      '名前は1〜200文字、概要は正しい形式で入力してください',
-    );
-  });
-
-  it('restores the description draft but resets the name when reopening', async () => {
-    editableProject();
-
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
-    const dialog = await openEditProject(wrapper);
-    await dialog.get('input[aria-label="プロジェクトの名前"]').setValue('Unsaved name');
-    await replaceContent(dialog, '概要', 'Unsaved summary');
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    expect(localStorage.getItem('draft:project:p1:description')).not.toBeNull();
-    await findButton(dialog, '閉じる').trigger('click');
-    await flushPromises();
-    expect(currentDialog()).toBeNull();
-
-    const reopened = await openEditProject(wrapper);
-    expect(inputValue(reopened.get('input[aria-label="プロジェクトの名前"]'))).toBe('Project One');
-    expect(editorFor(reopened, '概要').getText()).toBe('Unsaved summary');
-  });
-
   it('links each task title to its detail page', async () => {
     stubApi(baseRoutes('substaff', () => [makeTask(), makeTask({ id: 't2', title: 'Second' })]));
 
-    const { wrapper, router } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper, router } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     const links = wrapper.findAll('[data-testid="task"] [data-testid="task-open"]');
     expect(
@@ -297,10 +176,9 @@ describe('ProjectView', () => {
   it('hides every edit control for substaff', async () => {
     stubApi(baseRoutes('substaff'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     expect(wrapper.findAll('button').map((b) => b.text())).not.toContain('タスクを作成');
-    expect(wrapper.find(EDIT_PROJECT).exists()).toBe(false);
     expect(wrapper.find('[data-testid="create-task"]').exists()).toBe(false);
     const task = wrapper.get('[data-testid="task"]');
     expect(task.find('[role="checkbox"]').exists()).toBe(false);
@@ -317,7 +195,7 @@ describe('ProjectView', () => {
       },
     });
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
 
     const dialog = await openDialog(wrapper, 'タスクを作成');
     await dialog.get('input[aria-label="タスクのタイトル"]').setValue('New task');
@@ -351,7 +229,7 @@ describe('ProjectView', () => {
       },
     });
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const form = (await openDialog(wrapper, 'タスクを作成')).get('[data-testid="create-task"]');
     await form.get('input[aria-label="タスクのタイトル"]').setValue(' New task ');
     await typeInto(form, 'タスクの本文', 'Task body');
@@ -385,7 +263,7 @@ describe('ProjectView', () => {
     );
     stubApi(baseRoutes('admin'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const dialog = await openDialog(wrapper, 'タスクを作成');
 
     expect(editorFor(dialog, 'タスクの本文').getText()).toBe('Saved draft');
@@ -397,7 +275,7 @@ describe('ProjectView', () => {
       'POST /api/projects/p1/tasks': json({ error: 'validation_error' }, 400),
     });
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const form = (await openDialog(wrapper, 'タスクを作成')).get('[data-testid="create-task"]');
     await form.get('input[aria-label="タスクのタイトル"]').setValue('x');
     await form.trigger('submit');
@@ -411,7 +289,7 @@ describe('ProjectView', () => {
   it('keeps the title and description draft after closing the dialog', async () => {
     stubApi(baseRoutes('admin'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const dialog = await openDialog(wrapper, 'タスクを作成');
     await dialog.get('input[aria-label="タスクのタイトル"]').setValue('Half done');
     await typeInto(dialog, 'タスクの本文', 'Unsent body');
@@ -427,7 +305,7 @@ describe('ProjectView', () => {
   it('opens the link dialog on top of the create dialog', async () => {
     stubApi(baseRoutes('admin'));
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const createDialog = await openDialog(wrapper, 'タスクを作成');
     await typeInto(createDialog, 'タスクの本文', 'docs');
     editorFor(createDialog, 'タスクの本文').commands.selectAll();
@@ -457,7 +335,7 @@ describe('ProjectView', () => {
       'GET /api/projects/p1/tasks?includeArchived=true': json([makeTask(), archived]),
     });
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     expect(wrapper.findAll('[data-testid="task"]')).toHaveLength(1);
 
     await wrapper.get(INCLUDE_ARCHIVED).trigger('click');
@@ -483,7 +361,7 @@ describe('ProjectView', () => {
       'GET /api/projects/p1/tasks': json({ error: 'not_found' }, 404),
     });
 
-    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
     expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
     expect(wrapper.find('[data-testid="task"]').exists()).toBe(false);

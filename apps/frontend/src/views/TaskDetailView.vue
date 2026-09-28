@@ -167,7 +167,10 @@ function formatTimestamp(iso: string) {
     <template v-if="project">
       <ProjectHeader :project="project" />
       <Button variant="link" size="sm" class="mb-4 px-0" as-child>
-        <RouterLink :to="{ name: 'project', params: { projectId } }" data-testid="back-to-tasks">
+        <RouterLink
+          :to="{ name: 'project-tasks', params: { projectId } }"
+          data-testid="back-to-tasks"
+        >
           ← タスク一覧
         </RouterLink>
       </Button>
@@ -175,7 +178,9 @@ function formatTimestamp(iso: string) {
 
       <EmptyState v-if="taskMissing" message="タスクが見つかりません">
         <Button variant="outline" size="sm" as-child>
-          <RouterLink :to="{ name: 'project', params: { projectId } }">タスク一覧へ戻る</RouterLink>
+          <RouterLink :to="{ name: 'project-tasks', params: { projectId } }"
+            >タスク一覧へ戻る</RouterLink
+          >
         </Button>
       </EmptyState>
 

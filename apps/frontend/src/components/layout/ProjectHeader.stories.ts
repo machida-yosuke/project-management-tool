@@ -20,7 +20,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Tasks: Story = {};
+export const Home: Story = {};
 
 export const WithoutDescription: Story = {
   args: { project: { ...meta.args.project, description: emptyRichTextDoc() } },
@@ -28,6 +28,10 @@ export const WithoutDescription: Story = {
 
 export const Substaff: Story = {
   args: { project: { ...meta.args.project, role: 'substaff' } },
+};
+
+export const Tasks: Story = {
+  parameters: { route: '/projects/p1/tasks' },
 };
 
 export const Calendar: Story = {

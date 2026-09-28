@@ -4,11 +4,37 @@ import { z } from 'zod';
 import type { AuthEnv } from '../middleware/require-auth';
 import { onValidationError } from '../middleware/validation';
 import { EDITOR_ROLES, assertRole, requireMembership } from '../projects/authorize';
-import { createComment, listComments, updateComment } from '../projects/comments';
+import {
+  createComment,
+  listComments,
+  listProjectComments,
+  updateComment,
+} from '../projects/comments';
 
 const taskParam = z.object({ projectId: z.string(), taskId: z.string() });
 const commentParam = z.object({ projectId: z.string(), taskId: z.string(), commentId: z.string() });
 const bodySchema = z.object({ body: z.unknown() });
+const projectParam = z.object({ projectId: z.string() });
+// A digits-only regex rejects inputs Number() would accept, such as '1e1', ' 5' or '0x10'.
+const projectCommentsQuery = z.object({
+  limit: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(50))
+    .default(20),
+});
+
+export const projectCommentsRoute = new Hono<AuthEnv>().get(
+  '/',
+  zValidator('param', projectParam, onValidationError),
+  zValidator('query', projectCommentsQuery, onValidationError),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    await requireMembership(c.env.DB, projectId, c.get('user').id);
+    return c.json(await listProjectComments(c.env.DB, projectId, c.req.valid('query').limit));
+  },
+);
 
 export const commentsRoute = new Hono<AuthEnv>()
   .get('/', zValidator('param', taskParam, onValidationError), async (c) => {
