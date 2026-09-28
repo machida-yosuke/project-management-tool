@@ -276,7 +276,7 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 6em;
+  min-height: 9em;
   overflow: auto;
   resize: vertical;
 }
