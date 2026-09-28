@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { plainTextToRichTextDoc, type Project, type ProjectRole, type Task } from '@pm-tool/shared';
 import type { ProjectComment } from '../../src/api/generated/models';
 import ProjectHomeView from '../../src/views/ProjectHomeView.vue';
-import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { currentDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
 import { editorFor, replaceContent } from '../helpers/rich-text';
@@ -221,6 +221,7 @@ describe('ProjectHomeView', () => {
           startDate: '2026-09-01',
           endDate: '2026-10-31',
           assignee: bob,
+          label: makeLabel({ name: '更新依頼', color: '#3e63dd' }),
         }),
       ]),
     );
@@ -240,8 +241,10 @@ describe('ProjectHomeView', () => {
       '/projects/p1/tasks/spanning',
     );
     expect(first.get('[data-testid="week-task-assignee"]').attributes('title')).toBe('Bob');
+    expect(first.get('[data-testid="week-task-label"]').text()).toBe('更新依頼');
     const second = wrapper.findAll('[data-testid="week-task"]')[1];
     expect(second?.find('[data-testid="week-task-assignee"]').exists()).toBe(false);
+    expect(second?.find('[data-testid="week-task-label"]').exists()).toBe(false);
   });
 
   it('shows at most five tasks for this week', async () => {

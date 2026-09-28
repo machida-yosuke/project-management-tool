@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { DEFAULT_LABEL_COLOR } from '@pm-tool/shared';
 import type { Task } from '../../api/generated/models';
 import type { DragMode } from '../../lib/calendar-drag';
-import { TASK_COLOR_HEX } from '../../lib/task-colors';
 import type { VisibleSpan } from '../../lib/timeline-layout';
 import { cn } from '../../lib/utils';
 
@@ -22,7 +22,7 @@ const emit = defineEmits<{
 const style = computed(() => ({
   left: `${props.segment.startCol * props.columnWidth}px`,
   width: `${props.segment.span * props.columnWidth}px`,
-  backgroundColor: TASK_COLOR_HEX[props.task.color],
+  backgroundColor: props.task.label?.color ?? DEFAULT_LABEL_COLOR,
 }));
 
 const bandClass = computed(() => {

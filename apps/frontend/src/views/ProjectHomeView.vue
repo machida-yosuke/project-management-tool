@@ -7,6 +7,7 @@ import type { Task } from '../api/generated/models';
 import UserAvatar from '../components/UserAvatar.vue';
 import RichTextContent from '../components/rich-text/RichTextContent.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
+import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
@@ -84,13 +85,20 @@ function taskPeriod(task: Task) {
             >
               <TaskStateIcon class="mt-0.5" :status="task.status" />
               <div class="min-w-0 flex-1">
-                <RouterLink
-                  :to="{ name: 'task', params: { projectId, taskId: task.id } }"
-                  class="min-w-0 font-semibold break-words hover:text-primary hover:underline"
-                  data-testid="week-task-open"
-                >
-                  {{ task.title }}
-                </RouterLink>
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <RouterLink
+                    :to="{ name: 'task', params: { projectId, taskId: task.id } }"
+                    class="min-w-0 font-semibold break-words hover:text-primary hover:underline"
+                    data-testid="week-task-open"
+                  >
+                    {{ task.title }}
+                  </RouterLink>
+                  <TaskLabelPill
+                    v-if="task.label"
+                    :label="task.label"
+                    data-testid="week-task-label"
+                  />
+                </div>
                 <p class="mt-1 text-xs text-muted-foreground" data-testid="week-task-period">
                   {{ taskPeriod(task) }}
                 </p>

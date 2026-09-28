@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Task } from '@pm-tool/shared';
+import type { Task, TaskLabel } from '@pm-tool/shared';
 import { env } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/d1';
 import { emptyRichTextDoc, RICH_TEXT_MAX_BYTES } from '@pm-tool/shared';
@@ -26,7 +26,7 @@ describe('tasks routes', () => {
       assignee: null,
       startDate: null,
       endDate: null,
-      color: 'gray',
+      label: null,
       archivedAt: null,
       createdBy: { id: staff.id, email: staff.email, name: staff.name },
     });
@@ -251,17 +251,17 @@ describe('tasks routes', () => {
     expect(await json<unknown[]>(listed)).toHaveLength(1);
   });
 
-  it('stores dates and colors and enforces a complete, ordered range', async () => {
+  it('stores dates and enforces a complete, ordered range', async () => {
     const { project, admin } = await setupProject();
     const base = `/api/projects/${project.id}/tasks`;
 
     const created = await api(admin, base, {
       method: 'POST',
-      body: { title: 'T', startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' },
+      body: { title: 'T', startDate: '2026-10-01', endDate: '2026-10-03' },
     });
     expect(created.status).toBe(201);
     const task = await json<Task>(created);
-    expect(task).toMatchObject({ startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' });
+    expect(task).toMatchObject({ startDate: '2026-10-01', endDate: '2026-10-03' });
     const url = `${base}/${task.id}`;
 
     const moved = await api(admin, url, { method: 'PATCH', body: { startDate: '2026-10-02' } });
@@ -269,7 +269,6 @@ describe('tasks routes', () => {
     expect(await json<Task>(moved)).toMatchObject({
       startDate: '2026-10-02',
       endDate: '2026-10-03',
-      color: 'teal',
     });
 
     const inverted = await api(admin, url, { method: 'PATCH', body: { endDate: '2026-10-01' } });
@@ -293,13 +292,12 @@ describe('tasks routes', () => {
 
     const sameDay = await api(admin, url, {
       method: 'PATCH',
-      body: { startDate: '2026-10-05', endDate: '2026-10-05', color: 'red' },
+      body: { startDate: '2026-10-05', endDate: '2026-10-05' },
     });
     expect(sameDay.status).toBe(200);
     expect(await json<Task>(sameDay)).toMatchObject({
       startDate: '2026-10-05',
       endDate: '2026-10-05',
-      color: 'red',
     });
 
     for (const body of [
@@ -314,7 +312,7 @@ describe('tasks routes', () => {
     }
   });
 
-  it('rejects malformed dates and unknown colors', async () => {
+  it('rejects malformed dates', async () => {
     const { project, admin } = await setupProject();
     const base = `/api/projects/${project.id}/tasks`;
     const task = await json<Task>(await api(admin, base, { method: 'POST', body: { title: 'T' } }));
@@ -340,14 +338,65 @@ describe('tasks routes', () => {
       body: { title: 'T', startDate: '2028-02-29', endDate: '2028-02-29' },
     });
     expect(leapDay.status).toBe(201);
+  });
 
-    for (const res of [
-      await api(admin, base, { method: 'POST', body: { title: 'T', color: 'pink' } }),
-      await api(admin, `${base}/${task.id}`, { method: 'PATCH', body: { color: 'pink' } }),
-    ]) {
-      expect(res.status).toBe(400);
-      expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
+  it('attaches, keeps, and clears labels from the same project only', async () => {
+    const { project, admin } = await setupProject();
+    const other = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const [bug, request] = await json<TaskLabel[]>(
+      await api(admin, `/api/projects/${project.id}/labels`),
+    );
+    const [foreign] = await json<TaskLabel[]>(
+      await api(other.admin, `/api/projects/${other.project.id}/labels`),
+    );
+
+    const created = await api(admin, base, {
+      method: 'POST',
+      body: { title: 'T', labelId: bug!.id },
+    });
+    expect(created.status).toBe(201);
+    const task = await json<Task>(created);
+    expect(task.label).toEqual(bug);
+    const url = `${base}/${task.id}`;
+
+    const [listed] = (await json<Task[]>(await api(admin, base))).filter((t) => t.id === task.id);
+    expect(listed?.label).toEqual(bug);
+
+    const kept = await json<Task>(
+      await api(admin, url, { method: 'PATCH', body: { title: 'Renamed' } }),
+    );
+    expect(kept.label).toEqual(bug);
+
+    const changed = await json<Task>(
+      await api(admin, url, { method: 'PATCH', body: { labelId: request!.id } }),
+    );
+    expect(changed.label).toEqual(request);
+
+    for (const labelId of [foreign!.id, 'missing', 123]) {
+      for (const res of [
+        await api(admin, base, { method: 'POST', body: { title: 'T', labelId } }),
+        await api(admin, url, { method: 'PATCH', body: { labelId } }),
+      ]) {
+        expect(res.status).toBe(400);
+        expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
+      }
     }
+    expect((await json<Task>(await api(admin, url, { method: 'PATCH', body: {} }))).label).toEqual(
+      request,
+    );
+
+    const cleared = await json<Task>(
+      await api(admin, url, { method: 'PATCH', body: { labelId: null } }),
+    );
+    expect(cleared.label).toBeNull();
+
+    const unlabeled = await api(admin, base, {
+      method: 'POST',
+      body: { title: 'T', labelId: null },
+    });
+    expect(unlabeled.status).toBe(201);
+    expect((await json<Task>(unlabeled)).label).toBeNull();
   });
 
   it('stores rich text descriptions and defaults to the empty document', async () => {
@@ -454,7 +503,7 @@ describe('tasks routes', () => {
 
     for (const body of [
       { status: 'done' },
-      { title: 'Renamed', color: 'red', startDate: '2026-10-01', endDate: '2026-10-02' },
+      { title: 'Renamed', labelId: null, startDate: '2026-10-01', endDate: '2026-10-02' },
       { description: richText('a') },
     ]) {
       const res = await api(admin, url, { method: 'PATCH', body });

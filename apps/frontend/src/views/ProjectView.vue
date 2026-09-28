@@ -8,7 +8,7 @@ import type { Task, TaskStatus } from '../api/generated/models';
 import RichTextForm from '../components/rich-text/RichTextForm.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
-import TaskColorPill from '../components/task/TaskColorPill.vue';
+import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
@@ -211,7 +211,7 @@ function taskMetaSuffix(task: Task) {
                   >
                     {{ task.title }}
                   </RouterLink>
-                  <TaskColorPill :color="task.color" data-testid="task-color" />
+                  <TaskLabelPill v-if="task.label" :label="task.label" data-testid="task-label" />
                 </div>
                 <p class="mt-1 text-xs text-muted-foreground" data-testid="task-meta">
                   {{ task.createdBy.name }} が

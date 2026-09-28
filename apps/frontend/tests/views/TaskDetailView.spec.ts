@@ -5,9 +5,20 @@ import {
   type ProjectRole,
   type Task,
   type TaskComment,
+  type TaskLabel,
 } from '@pm-tool/shared';
 import TaskDetailView from '../../src/views/TaskDetailView.vue';
-import { alice, bob, json, makeMember, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import {
+  alice,
+  bob,
+  json,
+  makeLabel,
+  makeMember,
+  makeProject,
+  makeTask,
+  stubApi,
+} from '../helpers/api-mock';
+import { currentDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
 import { chooseOption, selectOptionLabels } from '../helpers/reka-select';
 import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
@@ -15,7 +26,11 @@ import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
 const PATH = '/projects/p1/tasks/t1';
 const TASKS = 'GET /api/projects/p1/tasks?includeArchived=true';
 const ASSIGNEE_SELECT = '[role="combobox"][aria-label="担当者"]';
-const COLOR_SELECT = '[role="combobox"][aria-label="色"]';
+const LABEL_SELECT = '[role="combobox"][aria-label="ラベル"]';
+const LABELS = 'GET /api/projects/p1/labels';
+
+const bugLabel = makeLabel({ id: 'l1', name: 'バグ報告', color: '#e5484d' });
+const requestLabel = makeLabel({ id: 'l2', name: '更新依頼', color: '#3e63dd' });
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
   return {
@@ -29,9 +44,14 @@ function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
   };
 }
 
-function baseRoutes(role: ProjectRole, tasks: () => Task[] = () => [makeTask({ assignee: bob })]) {
+function baseRoutes(
+  role: ProjectRole,
+  tasks: () => Task[] = () => [makeTask({ assignee: bob })],
+  labels: () => TaskLabel[] = () => [bugLabel, requestLabel],
+) {
   return {
     'GET /api/projects/p1': json(makeProject({ role })),
+    [LABELS]: () => json(labels()),
     [TASKS]: () => json(tasks()),
     'GET /api/projects/p1/members': json([
       makeMember(alice, { role: 'admin', isOwner: true }),
@@ -42,16 +62,26 @@ function baseRoutes(role: ProjectRole, tasks: () => Task[] = () => [makeTask({ a
 }
 
 // Mirrors the server so each PATCH shows up in the refetched list.
-function patchingRoutes(role: ProjectRole, initial: Task) {
+function patchingRoutes(
+  role: ProjectRole,
+  initial: Task,
+  labels: () => TaskLabel[] = () => [bugLabel, requestLabel],
+) {
   let task = initial;
   return {
-    ...baseRoutes(role, () => [task]),
+    ...baseRoutes(role, () => [task], labels),
     'PATCH /api/projects/p1/tasks/t1': (body: unknown) => {
-      const { assigneeId, ...patch } = body as Partial<Task> & { assigneeId?: string | null };
+      const { assigneeId, labelId, ...patch } = body as Partial<Task> & {
+        assigneeId?: string | null;
+        labelId?: string | null;
+      };
       task = makeTask({
         ...task,
         ...patch,
         ...(assigneeId !== undefined ? { assignee: assigneeId === bob.id ? bob : null } : {}),
+        ...(labelId !== undefined
+          ? { label: labels().find((label) => label.id === labelId) ?? null }
+          : {}),
       });
       return json(task);
     },
@@ -114,7 +144,7 @@ describe('TaskDetailView', () => {
   });
 
   it('shows edit controls for staff', async () => {
-    stubApi(baseRoutes('staff', () => [makeTask({ assignee: bob, color: 'blue' })]));
+    stubApi(baseRoutes('staff', () => [makeTask({ assignee: bob, label: bugLabel })]));
 
     const { wrapper } = await mountAt(TaskDetailView, PATH, bob);
 
@@ -122,7 +152,14 @@ describe('TaskDetailView', () => {
     const select = sidebar.get(ASSIGNEE_SELECT);
     expect(select.text()).toBe('Bob');
     expect(await selectOptionLabels(select)).toEqual(['未割り当て', 'Alice', 'Bob']);
-    expect(sidebar.get(COLOR_SELECT).text()).toBe('青');
+    const labelSelect = sidebar.get(LABEL_SELECT);
+    expect(labelSelect.text()).toBe('バグ報告');
+    expect(await selectOptionLabels(labelSelect)).toEqual([
+      'なし',
+      'バグ報告',
+      '更新依頼',
+      '新しいラベルを作成…',
+    ]);
     expect(sidebar.findAll('input[type="date"]')).toHaveLength(2);
     expect(buttonLabels(sidebar)).toEqual(['アーカイブ']);
     expect(buttonLabels(wrapper.get('[data-testid="task-header"]'))).toEqual(['タイトルを編集']);
@@ -134,9 +171,14 @@ describe('TaskDetailView', () => {
   });
 
   it('shows every field as text for substaff', async () => {
-    stubApi(
+    const requests = stubApi(
       baseRoutes('substaff', () => [
-        makeTask({ assignee: bob, startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' }),
+        makeTask({
+          assignee: bob,
+          startDate: '2026-10-01',
+          endDate: '2026-10-03',
+          label: requestLabel,
+        }),
       ]),
     );
 
@@ -151,7 +193,8 @@ describe('TaskDetailView', () => {
     expect(wrapper.get('[data-testid="task-assignee"]').text()).toBe('Bob');
     expect(wrapper.get('[data-testid="task-start-date"]').text()).toBe('2026-10-01');
     expect(wrapper.get('[data-testid="task-end-date"]').text()).toBe('2026-10-03');
-    expect(wrapper.get('[data-testid="task-color"]').text()).toBe('青緑');
+    expect(wrapper.get('[data-testid="task-label"]').text()).toBe('更新依頼');
+    expect(requestLines(requests)).not.toContain(LABELS);
     expect(wrapper.find('[data-testid="create-comment"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('Looks good');
   });
@@ -164,6 +207,7 @@ describe('TaskDetailView', () => {
     expect(wrapper.get('[data-testid="task-assignee"]').text()).toBe('未割り当て');
     expect(wrapper.get('[data-testid="task-start-date"]').text()).toBe('未設定');
     expect(wrapper.get('[data-testid="task-end-date"]').text()).toBe('未設定');
+    expect(wrapper.get('[data-testid="task-label"]').text()).toBe('なし');
   });
 
   it('toggles completion and changes the assignee', async () => {
@@ -182,7 +226,7 @@ describe('TaskDetailView', () => {
     expect(patchBodies(requests)).toEqual([{ status: 'done' }, { assigneeId: null }]);
   });
 
-  it('sends the date range and color', async () => {
+  it('sends the date range and label', async () => {
     const requests = stubApi(patchingRoutes('admin', makeTask()));
 
     const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
@@ -194,14 +238,73 @@ describe('TaskDetailView', () => {
     await wrapper.get('input[aria-label="終了日"]').setValue('');
     await flushPromises();
 
-    await chooseOption(wrapper.get(COLOR_SELECT), '青緑');
-    expect(wrapper.get(COLOR_SELECT).text()).toBe('青緑');
+    await chooseOption(wrapper.get(LABEL_SELECT), '更新依頼');
+    expect(wrapper.get(LABEL_SELECT).text()).toBe('更新依頼');
+
+    await chooseOption(wrapper.get(LABEL_SELECT), 'なし');
+    expect(wrapper.get(LABEL_SELECT).text()).toBe('なし');
 
     expect(patchBodies(requests)).toEqual([
       { startDate: '2026-10-01', endDate: '2026-10-01' },
       { startDate: null, endDate: null },
-      { color: 'teal' },
+      { labelId: 'l2' },
+      { labelId: null },
     ]);
+  });
+
+  it('creates a label from the select and attaches it to the task', async () => {
+    let labels = [bugLabel, requestLabel];
+    const created = makeLabel({ id: 'l3', name: '要確認', color: '#8e4ec6' });
+    const requests = stubApi({
+      ...patchingRoutes('admin', makeTask(), () => labels),
+      'POST /api/projects/p1/labels': () => {
+        labels = [...labels, created];
+        return json(created, 201);
+      },
+    });
+
+    const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
+    await chooseOption(wrapper.get(LABEL_SELECT), '新しいラベルを作成…');
+    const dialog = currentDialog();
+    if (!dialog) throw new Error('Label dialog did not open');
+    expect(dialog.get('h2').text()).toBe('ラベルを作成');
+    expect(patchBodies(requests)).toEqual([]);
+
+    await dialog.get('input[aria-label="ラベルの名前"]').setValue('  要確認 ');
+    await dialog.get('button[aria-label="#8e4ec6"]').trigger('click');
+    await dialog.get('[data-testid="label-form"]').trigger('submit');
+    await flushPromises();
+
+    const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
+    expect(post?.body).toEqual({ name: '要確認', color: '#8e4ec6' });
+    expect(patchBodies(requests)).toEqual([{ labelId: 'l3' }]);
+    expect(currentDialog()).toBeNull();
+    expect(wrapper.get(LABEL_SELECT).text()).toBe('要確認');
+    expect(requestLines(requests).filter((line) => line === LABELS)).toHaveLength(2);
+  });
+
+  it.each([
+    [json({ error: 'label_name_taken' }, 409), '同じ名前のラベルがあります'],
+    [json({ error: 'validation_error', issues: [] }, 400), '名前は1〜50文字で入力してください'],
+  ])('keeps the label dialog open with an error', async (response, message) => {
+    const requests = stubApi({
+      ...patchingRoutes('admin', makeTask()),
+      'POST /api/projects/p1/labels': response,
+    });
+
+    const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
+    await chooseOption(wrapper.get(LABEL_SELECT), '新しいラベルを作成…');
+    const dialog = currentDialog();
+    if (!dialog) throw new Error('Label dialog did not open');
+    await dialog.get('input[aria-label="ラベルの名前"]').setValue('バグ報告');
+    await dialog.get('[data-testid="label-form"]').trigger('submit');
+    await flushPromises();
+
+    expect(currentDialog()).not.toBeNull();
+    expect(dialog.get('[role="alert"]').text()).toBe(message);
+    expect(inputValue(dialog.get('input[aria-label="ラベルの名前"]'))).toBe('バグ報告');
+    expect(patchBodies(requests)).toEqual([]);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
   it('shows an action error for an invalid date range', async () => {

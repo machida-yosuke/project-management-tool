@@ -47,56 +47,17 @@
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { LabelColor } from './labelColor';
 
-export * from './acceptInvitationRequest';
-export * from './accountDeletionBlocked';
-export * from './accountDeletionBlockedProjectsItem';
-export * from './attachment';
-export * from './authUser';
-export * from './avatarUrl';
-export * from './calendarDate';
-export * from './createCommentRequest';
-export * from './createInvitationRequest';
-export * from './createLabelRequest';
-export * from './createProjectRequest';
-export * from './createTaskRequest';
-export * from './error';
-export * from './forbiddenOrIpBannedResponse';
-export * from './googleAuthParams';
-export * from './ipBannedResponse';
-export * from './labelColor';
-export * from './labelNameTakenResponse';
-export * from './listProjectCommentsParams';
-export * from './listTasksParams';
-export * from './notFoundResponse';
-export * from './project';
-export * from './projectComment';
-export * from './projectCommentTask';
-export * from './projectInvitation';
-export * from './projectMember';
-export * from './projectRole';
-export * from './rateLimitedResponse';
-export * from './richTextDoc';
-export * from './richTextDocType';
-export * from './richTextMark';
-export * from './richTextMarkAttrs';
-export * from './richTextNode';
-export * from './richTextNodeAttrs';
-export * from './task';
-export * from './taskComment';
-export * from './taskLabel';
-export * from './taskStatus';
-export * from './timestamp';
-export * from './unauthorizedResponse';
-export * from './updateCommentRequest';
-export * from './updateLabelRequest';
-export * from './updateMemberRoleRequest';
-export * from './updateMeRequest';
-export * from './updateProjectRequest';
-export * from './updateTaskRequest';
-export * from './uploadAttachmentRequest';
-export * from './uploadAvatarRequest';
-export * from './userSummary';
-export * from './validationError';
-export * from './validationErrorIssuesItem';
-export * from './validationErrorResponse';
+/**
+ * 全フィールド省略可。省略したフィールドは変更しない。
+ */
+export interface UpdateLabelRequest {
+  /**
+     * 前後の空白を除去してから長さを検証・保存する。同一プロジェクト内で一意。
+     * @minLength 1
+     * @maxLength 50
+     */
+  name?: string;
+  color?: LabelColor;
+}

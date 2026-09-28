@@ -17,6 +17,7 @@ const router = createRouter({
     { path: '/projects/:projectId', name: 'project', component: RouteStub },
     { path: '/projects/:projectId/tasks', name: 'project-tasks', component: RouteStub },
     { path: '/projects/:projectId/calendar', name: 'project-calendar', component: RouteStub },
+    { path: '/projects/:projectId/labels', name: 'project-labels', component: RouteStub },
     { path: '/projects/:projectId/members', name: 'project-members', component: RouteStub },
   ],
 });

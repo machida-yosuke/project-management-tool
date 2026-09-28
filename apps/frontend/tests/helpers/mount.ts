@@ -7,6 +7,7 @@ import HomeView from '../../src/views/HomeView.vue';
 import LoginView from '../../src/views/LoginView.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
 import ProjectHomeView from '../../src/views/ProjectHomeView.vue';
+import ProjectLabelsView from '../../src/views/ProjectLabelsView.vue';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
 import ProjectView from '../../src/views/ProjectView.vue';
 import SettingsView from '../../src/views/SettingsView.vue';
@@ -35,6 +36,11 @@ export async function mountAt(
       { path: '/projects/:projectId', name: 'project', component: ProjectHomeView },
       { path: '/projects/:projectId/tasks', name: 'project-tasks', component: ProjectView },
       { path: '/projects/:projectId/tasks/:taskId', name: 'task', component: TaskDetailView },
+      {
+        path: '/projects/:projectId/labels',
+        name: 'project-labels',
+        component: ProjectLabelsView,
+      },
       {
         path: '/projects/:projectId/members',
         name: 'project-members',

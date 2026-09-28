@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
-import { emptyRichTextDoc, type Project, type ProjectRole } from '@pm-tool/shared';
-import { projectMembers, projects } from '../db/schema';
+import { DEFAULT_LABELS, emptyRichTextDoc, type Project, type ProjectRole } from '@pm-tool/shared';
+import { projectMembers, projects, taskLabels } from '../db/schema';
 import { apiError } from './errors';
 import { deserializeRichText, serializeRichText } from './rich-text';
 
@@ -67,6 +67,15 @@ export async function createProject(
     orm
       .insert(projectMembers)
       .values({ projectId: row.id, userId: ownerId, role: 'admin', createdAt: now }),
+    orm.insert(taskLabels).values(
+      DEFAULT_LABELS.map((label) => ({
+        id: crypto.randomUUID(),
+        projectId: row.id,
+        name: label.name,
+        color: label.color,
+        createdAt: now,
+      })),
+    ),
   ]);
   return toProject(row, 'admin');
 }

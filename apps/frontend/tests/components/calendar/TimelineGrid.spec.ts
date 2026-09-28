@@ -4,7 +4,7 @@ import type { Task } from '@pm-tool/shared';
 import TimelineGrid from '../../../src/components/calendar/TimelineGrid.vue';
 import { MEASURE_CELLS_KEY, type DayCellRect } from '../../../src/lib/calendar-drag';
 import { addDays } from '../../../src/lib/dates';
-import { makeTask } from '../../helpers/api-mock';
+import { makeLabel, makeTask } from '../../helpers/api-mock';
 
 const COLUMN = 40;
 const LABEL = 200;
@@ -41,7 +41,12 @@ function mountGrid(
   });
 }
 
-const task = makeTask({ id: 't1', startDate: '2026-09-29', endDate: '2026-10-01', color: 'blue' });
+const task = makeTask({
+  id: 't1',
+  startDate: '2026-09-29',
+  endDate: '2026-10-01',
+  label: makeLabel({ color: '#3e63dd' }),
+});
 
 function pointer(clientX: number) {
   return { clientX, clientY: 10, pointerId: 1, button: 0 };
@@ -97,6 +102,17 @@ describe('TimelineGrid', () => {
     expect(style).toContain('left: 40px');
     expect(style).toContain('width: 120px');
     expect(band(wrapper).text()).toBe(task.title);
+  });
+
+  it('colors the band by its label and falls back to gray without one', () => {
+    const wrapper = mountGrid([
+      task,
+      makeTask({ id: 't2', startDate: '2026-09-29', endDate: '2026-09-29' }),
+    ]);
+    const [labeled, unlabeled] = wrapper.findAll('[data-testid="band"]');
+
+    expect(labeled?.attributes('style')).toContain('background-color: #3e63dd');
+    expect(unlabeled?.attributes('style')).toContain('background-color: #8b8d98');
   });
 
   it('opens a task from its row label', async () => {

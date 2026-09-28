@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import ProjectCalendarView from '../views/ProjectCalendarView.vue';
 import ProjectHomeView from '../views/ProjectHomeView.vue';
+import ProjectLabelsView from '../views/ProjectLabelsView.vue';
 import ProjectMembersView from '../views/ProjectMembersView.vue';
 import ProjectView from '../views/ProjectView.vue';
 import SettingsView from '../views/SettingsView.vue';
@@ -30,6 +31,12 @@ export const router = createRouter({
       path: '/projects/:projectId/tasks/:taskId',
       name: 'task',
       component: TaskDetailView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/labels',
+      name: 'project-labels',
+      component: ProjectLabelsView,
       meta: { requiresAuth: true },
     },
     {

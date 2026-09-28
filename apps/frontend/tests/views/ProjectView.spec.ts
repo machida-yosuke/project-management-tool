@@ -2,7 +2,7 @@ import { enableAutoUnmount, flushPromises, type DOMWrapper } from '@vue/test-uti
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { plainTextToRichTextDoc, type ProjectRole, type Task } from '@pm-tool/shared';
 import ProjectView from '../../src/views/ProjectView.vue';
-import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
 import { editorFor, typeInto } from '../helpers/rich-text';
@@ -39,6 +39,7 @@ describe('ProjectView', () => {
       ['ホーム', '/projects/p1'],
       ['タスク', '/projects/p1/tasks'],
       ['カレンダー', '/projects/p1/calendar'],
+      ['ラベル', '/projects/p1/labels'],
       ['メンバー', '/projects/p1/members'],
     ]);
     expect(nav.get('a[aria-current="page"]').text()).toBe('タスク');
@@ -106,11 +107,11 @@ describe('ProjectView', () => {
       vi.useRealTimers();
     });
 
-    it('shows the state icon, color pill, author, period and assignee', async () => {
+    it('shows the state icon, label pill, author, period and assignee', async () => {
       stubApi(
         baseRoutes('substaff', () => [
           makeTask({
-            color: 'blue',
+            label: makeLabel({ name: '更新依頼', color: '#3e63dd' }),
             assignee: bob,
             startDate: '2026-09-10',
             endDate: '2026-09-12',
@@ -123,8 +124,8 @@ describe('ProjectView', () => {
 
       const row = wrapper.get('[data-testid="task"]');
       expect(row.get('[role="img"]').attributes('aria-label')).toBe('未完了');
-      const pill = row.get('[data-testid="task-color"]');
-      expect(pill.text()).toBe('青');
+      const pill = row.get('[data-testid="task-label"]');
+      expect(pill.text()).toBe('更新依頼');
       expect(pill.attributes('style')).toContain('border-color: #3e63dd66');
       expect(row.get('[data-testid="task-meta"]').text()).toBe(
         'Alice が 3 日前 に作成 · 2026-09-10 〜 2026-09-12',
@@ -136,7 +137,7 @@ describe('ProjectView', () => {
 
       const doneRow = wrapper.get('[data-testid="task"]');
       expect(doneRow.get('[role="img"]').attributes('aria-label')).toBe('完了');
-      expect(doneRow.get('[data-testid="task-color"]').text()).toBe('灰');
+      expect(doneRow.find('[data-testid="task-label"]').exists()).toBe(false);
       expect(doneRow.get('[data-testid="task-meta"]').text()).toBe('Alice が 3 日前 に作成');
       expect(doneRow.find('[data-testid="task-assignee"]').exists()).toBe(false);
     });

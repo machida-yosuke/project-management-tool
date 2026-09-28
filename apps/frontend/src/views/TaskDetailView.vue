@@ -1,26 +1,28 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import { TASK_COLORS, canEdit } from '@pm-tool/shared';
+import { canEdit } from '@pm-tool/shared';
 import {
   useArchiveTask,
   useGetProject,
   useListComments,
+  useListLabels,
   useListMembers,
   useListTasks,
   useUnarchiveTask,
   useUpdateTask,
 } from '../api/generated';
-import type { Task, UpdateTaskRequest } from '../api/generated/models';
+import type { Task, TaskLabel, UpdateTaskRequest } from '../api/generated/models';
 import CommentThread from '../components/CommentThread.vue';
 import TaskDescription from '../components/TaskDescription.vue';
 import TaskTitle from '../components/TaskTitle.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import LabelFormDialog from '../components/label/LabelFormDialog.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
 import SidebarSection from '../components/task/SidebarSection.vue';
-import TaskColorPill from '../components/task/TaskColorPill.vue';
+import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import TaskStateBadge from '../components/task/TaskStateBadge.vue';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -29,6 +31,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
@@ -61,6 +64,9 @@ const members = computed(() => membersQuery.data.value ?? []);
 const comments = computed(() => commentsQuery.data.value ?? []);
 const taskMissing = computed(() => tasksQuery.data.value !== undefined && task.value === null);
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
+// Labels only feed the edit select, so read-only roles skip the request.
+const labelsQuery = useListLabels(projectId, () => ({ query: { enabled: editable.value } }));
+const labels = computed(() => labelsQuery.data.value ?? []);
 
 const loadError = computed(() => {
   const e = projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value;
@@ -99,6 +105,10 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
 
 // Reka UI's SelectItem rejects an empty-string value, so "unassigned" needs its own token.
 const UNASSIGNED = '__unassigned__';
+const NO_LABEL = '__no_label__';
+const CREATE_LABEL = '__create_label__';
+
+const createLabelOpen = ref(false);
 
 function updateTask(target: Task, request: UpdateTaskRequest, messages?: Record<string, string>) {
   return runAction(
@@ -138,10 +148,19 @@ function changeDate(target: Task, field: 'startDate' | 'endDate', event: Event) 
   return updateTask(target, range, { invalid_date_range: '終了日は開始日以降にしてください' });
 }
 
-function changeColor(target: Task, value: unknown) {
-  const color = TASK_COLORS.find((c) => c === value);
-  if (!color) throw new Error(`Unknown task color: ${String(value)}`);
-  return updateTask(target, { color });
+function changeLabel(target: Task, value: unknown) {
+  if (value === CREATE_LABEL) {
+    createLabelOpen.value = true;
+    return;
+  }
+  if (value === NO_LABEL) return updateTask(target, { labelId: null });
+  const label = labels.value.find((candidate) => candidate.id === value);
+  if (!label) throw new Error(`Unknown label: ${String(value)}`);
+  return updateTask(target, { labelId: label.id });
+}
+
+function applyCreatedLabel(target: Task, label: TaskLabel) {
+  return updateTask(target, { labelId: label.id });
 }
 
 function archiveTask(target: Task) {
@@ -251,22 +270,32 @@ function formatTimestamp(iso: string) {
               </p>
             </SidebarSection>
 
-            <SidebarSection title="色">
-              <Select
-                v-if="editable"
-                :model-value="task.color"
-                @update:model-value="changeColor(task, $event)"
-              >
-                <SelectTrigger size="sm" class="w-full" aria-label="色">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="color in TASK_COLORS" :key="color" :value="color">
-                    <TaskColorPill :color="color" />
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <TaskColorPill v-else :color="task.color" data-testid="task-color" />
+            <SidebarSection title="ラベル">
+              <template v-if="editable">
+                <Select
+                  :model-value="task.label?.id ?? NO_LABEL"
+                  @update:model-value="changeLabel(task, $event)"
+                >
+                  <SelectTrigger size="sm" class="w-full" aria-label="ラベル">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem :value="NO_LABEL">なし</SelectItem>
+                    <SelectItem v-for="label in labels" :key="label.id" :value="label.id">
+                      <TaskLabelPill :label="label" />
+                    </SelectItem>
+                    <SelectSeparator />
+                    <SelectItem :value="CREATE_LABEL">新しいラベルを作成…</SelectItem>
+                  </SelectContent>
+                </Select>
+                <LabelFormDialog
+                  v-model:open="createLabelOpen"
+                  :project-id="projectId"
+                  @saved="applyCreatedLabel(task, $event)"
+                />
+              </template>
+              <TaskLabelPill v-else-if="task.label" :label="task.label" data-testid="task-label" />
+              <p v-else class="text-muted-foreground" data-testid="task-label">なし</p>
             </SidebarSection>
 
             <SidebarSection title="期間">

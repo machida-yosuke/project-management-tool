@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { DEFAULT_LABEL_COLOR } from '@pm-tool/shared';
 import type { Task } from '../../api/generated/models';
 import type { DragMode } from '../../lib/calendar-drag';
 import type { DateString } from '../../lib/dates';
-import { TASK_COLOR_HEX } from '../../lib/task-colors';
 import type { VisibleSpan } from '../../lib/timeline-layout';
 import TaskBand from './TaskBand.vue';
 
@@ -38,7 +38,7 @@ const emit = defineEmits<{
     >
       <span
         class="size-2.5 flex-none rounded-full"
-        :style="{ backgroundColor: TASK_COLOR_HEX[task.color] }"
+        :style="{ backgroundColor: task.label?.color ?? DEFAULT_LABEL_COLOR }"
       />
       <span class="min-w-0 truncate">{{ task.title }}</span>
     </button>

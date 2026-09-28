@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectRole, Task } from '@pm-tool/shared';
 import TimelineGrid from '../../src/components/calendar/TimelineGrid.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
-import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { mountAt } from '../helpers/mount';
 
 const PATH = '/projects/p1/calendar?date=2026-09-15';
@@ -14,7 +14,7 @@ const activeTasks: Task[] = [
     title: 'Design',
     startDate: '2026-09-14',
     endDate: '2026-09-16',
-    color: 'blue',
+    label: makeLabel({ color: '#3e63dd' }),
     assignee: bob,
   }),
   makeTask({

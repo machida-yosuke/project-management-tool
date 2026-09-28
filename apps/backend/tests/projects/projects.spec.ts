@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
-import { emptyRichTextDoc, type Project } from '@pm-tool/shared';
+import { DEFAULT_LABELS, emptyRichTextDoc, type Project, type TaskLabel } from '@pm-tool/shared';
 import { projects } from '../../src/db/schema';
 import {
   addMember,
@@ -37,6 +37,14 @@ describe('projects routes', () => {
     expect(members).toEqual([
       expect.objectContaining({ userId: owner.id, isOwner: true, role: 'admin' }),
     ]);
+  });
+
+  it('creates the default labels with a new project', async () => {
+    const owner = await createUser('owner');
+    const project = await createProjectAs(owner);
+    const labels = await json<TaskLabel[]>(await api(owner, `/api/projects/${project.id}/labels`));
+    expect(labels.map((l) => ({ name: l.name, color: l.color }))).toEqual(DEFAULT_LABELS);
+    expect(labels.map((l) => l.projectId)).toEqual([project.id, project.id, project.id]);
   });
 
   it('lists only projects the user belongs to, with their own role', async () => {

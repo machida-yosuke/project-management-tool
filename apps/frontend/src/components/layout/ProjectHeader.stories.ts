@@ -38,6 +38,10 @@ export const Calendar: Story = {
   parameters: { route: '/projects/p1/calendar' },
 };
 
+export const Labels: Story = {
+  parameters: { route: '/projects/p1/labels' },
+};
+
 export const Members: Story = {
   parameters: { route: '/projects/p1/members' },
 };
