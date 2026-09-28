@@ -72,8 +72,8 @@ function taskPeriod(task: Task) {
     <template v-if="project">
       <ProjectHeader :project="project" />
 
-      <div class="space-y-8">
-        <section class="space-y-3" aria-labelledby="week-tasks-heading">
+      <div class="grid gap-8 lg:grid-cols-2">
+        <section class="min-w-0 space-y-3" aria-labelledby="week-tasks-heading">
           <h2 id="week-tasks-heading" class="text-lg font-semibold">今週のタスク</h2>
           <EmptyState v-if="weekTasks.length === 0" message="今週のタスクはありません" />
           <ul v-else class="divide-y rounded-lg border">
@@ -115,7 +115,7 @@ function taskPeriod(task: Task) {
           </ul>
         </section>
 
-        <section class="space-y-3" aria-labelledby="recent-comments-heading">
+        <section class="min-w-0 space-y-3" aria-labelledby="recent-comments-heading">
           <h2 id="recent-comments-heading" class="text-lg font-semibold">最新のコメント</h2>
           <EmptyState v-if="comments.length === 0" message="コメントはありません" />
           <ul v-else class="space-y-3">

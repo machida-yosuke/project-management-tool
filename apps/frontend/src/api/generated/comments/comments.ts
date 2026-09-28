@@ -78,7 +78,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   /**
- * 全ロールが閲覧できる。プロジェクト内の全タスク（アーカイブ済みを含む）のコメントを作成日時の降順で返す。
+ * 全ロールが閲覧できる。プロジェクト内のアーカイブされていないタスクのコメントを作成日時の降順で返す。
  * @summary プロジェクト内の最新コメントを取得する
  */
 export const listProjectComments = (

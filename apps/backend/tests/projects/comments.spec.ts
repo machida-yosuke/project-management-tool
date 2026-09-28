@@ -179,7 +179,7 @@ describe('GET project comments', () => {
     );
   }
 
-  it('lists comments across tasks, archived included, newest first with the task attached', async () => {
+  it('lists comments across unarchived tasks, newest first with the task attached', async () => {
     const fixture = await setupTask();
     const { admin, substaff, project, task } = fixture;
     const archivedTask = await json<Task>(
@@ -206,9 +206,20 @@ describe('GET project comments', () => {
     const res = await api(substaff, `/api/projects/${project.id}/comments`);
     expect(res.status).toBe(200);
     const listed = await json<ProjectComment[]>(res);
-    expect(listed.map((c) => c.id)).toEqual([third.id, second.id, first.id]);
+    expect(listed.map((c) => c.id)).toEqual([third.id, first.id]);
     expect(listed[0]).toEqual({ ...third, task: { id: task.id, title: 'T' } });
-    expect(listed[1]).toEqual({ ...second, task: { id: archivedTask.id, title: 'Archived' } });
+
+    const unarchive = await api(
+      admin,
+      `/api/projects/${project.id}/tasks/${archivedTask.id}/unarchive`,
+      { method: 'POST' },
+    );
+    expect(unarchive.status).toBe(200);
+    const restored = await json<ProjectComment[]>(
+      await api(substaff, `/api/projects/${project.id}/comments`),
+    );
+    expect(restored.map((c) => c.id)).toEqual([third.id, second.id, first.id]);
+    expect(restored[1]).toEqual({ ...second, task: { id: archivedTask.id, title: 'Archived' } });
   });
 
   it('applies limit, defaulting to 20', async () => {

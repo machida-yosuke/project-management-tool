@@ -521,7 +521,7 @@ paths:
     get:
       operationId: listProjectComments
       summary: プロジェクト内の最新コメントを取得する
-      description: 全ロールが閲覧できる。プロジェクト内の全タスク（アーカイブ済みを含む）のコメントを作成日時の降順で返す。
+      description: 全ロールが閲覧できる。プロジェクト内のアーカイブされていないタスクのコメントを作成日時の降順で返す。
       tags: [comments]
       parameters:
         - name: limit

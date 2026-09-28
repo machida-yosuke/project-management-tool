@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { TaskComment } from '@pm-tool/shared';
 import { taskComments, tasks, users } from '../db/schema';
@@ -85,7 +85,7 @@ export async function listProjectComments(
     .from(taskComments)
     .innerJoin(users, eq(users.id, taskComments.userId))
     .innerJoin(tasks, eq(tasks.id, taskComments.taskId))
-    .where(eq(tasks.projectId, projectId))
+    .where(and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt)))
     .orderBy(desc(taskComments.createdAt), desc(sql`${taskComments}.rowid`))
     .limit(limit);
   return rows.map((row) => ({ ...toComment(row, projectId), task: row.task }));
