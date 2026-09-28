@@ -274,6 +274,11 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
 
 .surface {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 6em;
+  overflow: auto;
+  resize: vertical;
 }
 
 .placeholder {
@@ -286,9 +291,13 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
 }
 
 .surface :deep(.rich-text-input) {
-  min-height: 4em;
+  flex: 1;
   padding: 8px;
   outline: none;
+}
+
+.surface :deep(.rich-text-input p) {
+  margin: 0 0 0.25em;
 }
 
 .surface :deep(.rich-text-input > :first-child) {

@@ -22,6 +22,10 @@ const html = computed(() => generateHTML(props.doc, extensions));
   overflow-wrap: anywhere;
 }
 
+.rich-text-content :deep(p) {
+  margin: 0 0 0.25em;
+}
+
 .rich-text-content :deep(> :first-child) {
   margin-top: 0;
 }
