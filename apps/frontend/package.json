@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "generate:api": "orval --config orval.config.ts",
     "deploy:staging": "pnpm build:staging && wrangler deploy --env staging",
-    "deploy:production": "pnpm build:production && wrangler deploy --env production"
+    "deploy:production": "pnpm build:production && wrangler deploy --env production",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@pinia/colada": "^1.4.6",
@@ -32,6 +34,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260919.1",
+    "@storybook/addon-docs": "^10.6.0",
+    "@storybook/vue3-vite": "^10.6.0",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vue/test-utils": "^2.4.0",
@@ -39,6 +43,7 @@
     "backend": "workspace:*",
     "happy-dom": "^16.0.0",
     "orval": "^8.37.0",
+    "storybook": "^10.6.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vitest": "^4.1.11",
