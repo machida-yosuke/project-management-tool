@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
 import { Slice } from '@tiptap/pm/model';
@@ -59,6 +59,36 @@ function dropFiles(editor: Editor, files: File[]) {
     handler(editor.view, event, Slice.empty, false),
   );
   return { event, handled };
+}
+
+function linkDialog(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>('[role="dialog"]');
+}
+
+async function openLinkDialog(wrapper: VueWrapper) {
+  await wrapper.get('button[aria-label="リンク"]').trigger('click');
+  await flushPromises();
+  const dialog = linkDialog();
+  if (!dialog) throw new Error('Link dialog did not open');
+  return new DOMWrapper(dialog);
+}
+
+async function submitLink(dialog: DOMWrapper<HTMLElement>, url: string) {
+  await dialog.get('input[aria-label="リンク先の URL"]').setValue(url);
+  await dialog.get('[data-testid="link-form"]').trigger('submit');
+  await flushPromises();
+}
+
+function linkParagraph(text: string, href: string): RichTextDoc {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text, marks: [{ type: 'link', attrs: { href } }] }],
+      },
+    ],
+  };
 }
 
 describe('RichTextEditor', () => {
@@ -181,6 +211,66 @@ describe('RichTextEditor', () => {
     await flushPromises();
 
     expect(images(doc.value)).toEqual(['data:image/png;base64,iVBORw0KGgo=']);
+  });
+
+  it('inserts a link through the dialog at the cursor', async () => {
+    const { wrapper, doc } = await mountEditor();
+
+    const dialog = await openLinkDialog(wrapper);
+    expect(dialog.text()).toContain('リンクを挿入');
+    await submitLink(dialog, ' https://example.com ');
+
+    expect(linkDialog()).toBeNull();
+    expect(doc.value).toMatchObject(linkParagraph('https://example.com', 'https://example.com'));
+  });
+
+  it('links the selected text through the dialog', async () => {
+    const { wrapper, doc } = await mountEditor(plainTextToRichTextDoc('Hello'));
+    editorFor(wrapper, '本文').commands.setTextSelection({ from: 1, to: 6 });
+
+    await submitLink(await openLinkDialog(wrapper), 'https://example.com');
+
+    expect(doc.value).toMatchObject(linkParagraph('Hello', 'https://example.com'));
+  });
+
+  it('keeps the dialog open with an error for a non-http URL', async () => {
+    const initial = plainTextToRichTextDoc('Hello');
+    const { wrapper, doc } = await mountEditor(initial);
+
+    const dialog = await openLinkDialog(wrapper);
+    await submitLink(dialog, 'javascript:alert(1)');
+
+    expect(linkDialog()).not.toBeNull();
+    expect(dialog.get('[role="alert"]').text()).toBe(
+      'リンクは http:// か https:// で始まる URL にしてください',
+    );
+    expect(doc.value).toEqual(initial);
+  });
+
+  it('leaves the doc untouched when the link dialog is cancelled', async () => {
+    const initial = plainTextToRichTextDoc('Hello');
+    const { wrapper, doc } = await mountEditor(initial);
+
+    const dialog = await openLinkDialog(wrapper);
+    await dialog.get('input[aria-label="リンク先の URL"]').setValue('https://example.com');
+    const cancel = dialog.findAll('button').find((button) => button.text() === 'キャンセル');
+    await cancel?.trigger('click');
+    await flushPromises();
+
+    expect(linkDialog()).toBeNull();
+    expect(doc.value).toEqual(initial);
+  });
+
+  it('removes an active link without opening the dialog', async () => {
+    const { wrapper, doc } = await mountEditor(linkParagraph('Hello', 'https://example.com'));
+    editorFor(wrapper, '本文').commands.setTextSelection(3);
+    await flushPromises();
+
+    await wrapper.get('button[aria-label="リンク"]').trigger('click');
+    await flushPromises();
+
+    expect(linkDialog()).toBeNull();
+    expect(doc.value).toEqual(plainTextToRichTextDoc('Hello'));
   });
 
   it('renders stored attachment images from the API origin', async () => {

@@ -2,7 +2,29 @@
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { AccountDeletionBlocked } from '@pm-tool/shared';
+import PageHeader from '../components/layout/PageHeader.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
+import { Button } from '../components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventFile } from '../lib/form';
 import { ImageDecodeError, resizeAvatar } from '../lib/image';
@@ -104,10 +126,6 @@ function startDelete() {
   confirmingDelete.value = true;
 }
 
-function cancelDelete() {
-  confirmingDelete.value = false;
-}
-
 async function deleteAccount() {
   deleteError.value = '';
   blockedProjects.value = [];
@@ -139,99 +157,126 @@ async function deleteAccount() {
 </script>
 
 <template>
-  <div v-if="authStore.user" class="settings">
-    <h2>設定</h2>
+  <div v-if="authStore.user" class="max-w-2xl">
+    <PageHeader title="設定" />
 
-    <section>
-      <h3>名前</h3>
-      <form class="inline-form" data-testid="name-form" @submit.prevent="saveName">
-        <input v-model="nameInput" type="text" required maxlength="100" aria-label="名前" />
-        <button type="submit" :disabled="savingName">保存</button>
-      </form>
-      <p v-if="nameNotice" class="notice" role="status">{{ nameNotice }}</p>
-      <p v-if="nameError" class="error" role="alert">{{ nameError }}</p>
-    </section>
+    <div class="space-y-6">
+      <Card class="">
+        <CardHeader>
+          <CardTitle>プロフィール</CardTitle>
+        </CardHeader>
+        <form class="flex flex-col gap-6" data-testid="name-form" @submit.prevent="saveName">
+          <CardContent class="space-y-2">
+            <Label for="settings-name">名前</Label>
+            <Input
+              id="settings-name"
+              v-model="nameInput"
+              class="max-w-sm"
+              type="text"
+              required
+              maxlength="100"
+              aria-label="名前"
+            />
+          </CardContent>
+          <CardFooter class="gap-3">
+            <Button type="submit" :disabled="savingName">保存</Button>
+            <p v-if="nameNotice" class="text-sm text-muted-foreground" role="status">
+              {{ nameNotice }}
+            </p>
+            <p v-if="nameError" class="text-sm text-destructive" role="alert">{{ nameError }}</p>
+          </CardFooter>
+        </form>
+      </Card>
 
-    <section data-testid="avatar-section">
-      <h3>アバター</h3>
-      <div class="avatar-row">
-        <UserAvatar :name="authStore.user.name" :avatar-url="authStore.user.avatarUrl" :size="64" />
-        <input
-          :key="fileInputKey"
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          aria-label="アバター画像"
-          :disabled="avatarBusy"
-          @change="onAvatarSelected"
-        />
-        <button
-          v-if="authStore.user.avatarUrl"
-          type="button"
-          :disabled="avatarBusy"
-          @click="removeAvatar"
-        >
-          アバターを削除
-        </button>
-      </div>
-      <p class="muted">PNG / JPEG / WebP / GIF</p>
-      <p v-if="avatarError" class="error" role="alert">{{ avatarError }}</p>
-    </section>
+      <Card class="" data-testid="avatar-section">
+        <CardHeader>
+          <CardTitle>アバター</CardTitle>
+          <CardDescription>PNG / JPEG / WebP / GIF</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="flex items-center gap-4">
+            <UserAvatar
+              :name="authStore.user.name"
+              :avatar-url="authStore.user.avatarUrl"
+              :size="80"
+            />
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- Native file input: the Input component always binds v-model, which a file input cannot use. -->
+              <input
+                :key="fileInputKey"
+                class="text-sm text-muted-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                aria-label="アバター画像"
+                :disabled="avatarBusy"
+                @change="onAvatarSelected"
+              />
+              <Button
+                v-if="authStore.user.avatarUrl"
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="avatarBusy"
+                @click="removeAvatar"
+              >
+                アバターを削除
+              </Button>
+            </div>
+          </div>
+          <p v-if="avatarError" class="text-sm text-destructive" role="alert">{{ avatarError }}</p>
+        </CardContent>
+      </Card>
 
-    <section data-testid="delete-account">
-      <h3>退会</h3>
-      <template v-if="confirmingDelete">
-        <p>
-          退会すると元に戻せません。自分だけが参加しているプロジェクトは削除されます。作成したタスクやコメントは「退会したユーザー」として残ります。
-        </p>
-        <div class="inline-form">
-          <button type="button" class="danger" :disabled="deleting" @click="deleteAccount">
-            本当に退会する
-          </button>
-          <button type="button" :disabled="deleting" @click="cancelDelete">キャンセル</button>
-        </div>
-      </template>
-      <button v-else type="button" class="danger" @click="startDelete">退会する</button>
-      <p v-if="deleteError" class="error" role="alert">{{ deleteError }}</p>
-      <ul v-if="blockedProjects.length > 0" class="list" data-testid="blocking-projects">
-        <li v-for="project in blockedProjects" :key="project.id">
-          <router-link :to="{ name: 'project', params: { projectId: project.id } }">
-            {{ project.name }}
-          </router-link>
-        </li>
-      </ul>
-    </section>
+      <Card class="border-destructive/50" data-testid="delete-account">
+        <CardHeader>
+          <CardTitle>退会</CardTitle>
+          <CardDescription>アカウントを削除します。この操作は元に戻せません。</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <AlertDialog v-model:open="confirmingDelete">
+            <AlertDialogTrigger as-child>
+              <Button type="button" variant="destructive" :disabled="deleting" @click="startDelete">
+                退会する
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>退会する</AlertDialogTitle>
+                <AlertDialogDescription>
+                  退会すると元に戻せません。自分だけが参加しているプロジェクトは削除されます。作成したタスクやコメントは「退会したユーザー」として残ります。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel :disabled="deleting">キャンセル</AlertDialogCancel>
+                <!-- A plain Button instead of AlertDialogAction keeps the dialog open while the request runs. -->
+                <Button
+                  type="button"
+                  variant="destructive"
+                  :disabled="deleting"
+                  @click="deleteAccount"
+                >
+                  退会する
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <p v-if="deleteError" class="text-sm text-destructive" role="alert">{{ deleteError }}</p>
+          <ul
+            v-if="blockedProjects.length > 0"
+            class="list-disc pl-5 text-sm"
+            data-testid="blocking-projects"
+          >
+            <li v-for="project in blockedProjects" :key="project.id">
+              <router-link
+                :to="{ name: 'project', params: { projectId: project.id } }"
+                class="underline underline-offset-4"
+              >
+                {{ project.name }}
+              </router-link>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.settings section {
-  margin-bottom: 24px;
-}
-
-.inline-form,
-.avatar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.list {
-  padding-left: 20px;
-}
-
-.danger {
-  color: #c00;
-}
-
-.muted {
-  color: #666;
-}
-
-.notice {
-  color: #070;
-}
-
-.error {
-  color: #c00;
-}
-</style>

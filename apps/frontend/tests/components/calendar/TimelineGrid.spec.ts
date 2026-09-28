@@ -33,7 +33,6 @@ function mountGrid(
       tasks,
       editable: true,
       today: '2026-09-30',
-      selectedTaskId: null,
       dateOverrides: {},
       columnWidth: COLUMN,
       ...props,

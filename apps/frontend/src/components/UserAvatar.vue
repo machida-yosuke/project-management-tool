@@ -17,25 +17,18 @@ const style = computed(() => ({
 </script>
 
 <template>
-  <img v-if="src" class="avatar" :src="src" :alt="name" :style="style" />
-  <span v-else class="avatar initial" :style="style" aria-hidden="true">{{ initial }}</span>
+  <img
+    v-if="src"
+    class="inline-flex shrink-0 rounded-full object-cover align-middle"
+    :src="src"
+    :alt="name"
+    :style="style"
+  />
+  <span
+    v-else
+    class="inline-flex shrink-0 items-center justify-center rounded-full bg-muted leading-none font-bold text-muted-foreground align-middle"
+    :style="style"
+    aria-hidden="true"
+    >{{ initial }}</span
+  >
 </template>
-
-<style scoped>
-.avatar {
-  display: inline-flex;
-  flex-shrink: 0;
-  border-radius: 50%;
-  object-fit: cover;
-  vertical-align: middle;
-}
-
-.initial {
-  align-items: center;
-  justify-content: center;
-  background: #cfd8e3;
-  color: #334;
-  font-weight: bold;
-  line-height: 1;
-}
-</style>

@@ -7,9 +7,9 @@ import HomeView from '../../src/views/HomeView.vue';
 import LoginView from '../../src/views/LoginView.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
-import ProjectSettingsView from '../../src/views/ProjectSettingsView.vue';
 import ProjectView from '../../src/views/ProjectView.vue';
 import SettingsView from '../../src/views/SettingsView.vue';
+import TaskDetailView from '../../src/views/TaskDetailView.vue';
 import { useAuthStore } from '../../src/stores/auth';
 import type { UserSummary } from '@pm-tool/shared';
 
@@ -32,6 +32,7 @@ export async function mountAt(
       { path: '/login', name: 'login', component: LoginView },
       { path: '/settings', name: 'settings', component: SettingsView },
       { path: '/projects/:projectId', name: 'project', component: ProjectView },
+      { path: '/projects/:projectId/tasks/:taskId', name: 'task', component: TaskDetailView },
       {
         path: '/projects/:projectId/members',
         name: 'project-members',
@@ -41,11 +42,6 @@ export async function mountAt(
         path: '/projects/:projectId/calendar',
         name: 'project-calendar',
         component: ProjectCalendarView,
-      },
-      {
-        path: '/projects/:projectId/settings',
-        name: 'project-settings',
-        component: ProjectSettingsView,
       },
     ],
   });

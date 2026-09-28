@@ -1,27 +1,12 @@
 import { flushPromises, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  plainTextToRichTextDoc,
-  type ProjectRole,
-  type Task,
-  type TaskComment,
-} from '@pm-tool/shared';
+import type { ProjectRole, Task } from '@pm-tool/shared';
 import TimelineGrid from '../../src/components/calendar/TimelineGrid.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
 import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { mountAt } from '../helpers/mount';
-import { replaceContent, typeInto } from '../helpers/rich-text';
 
 const PATH = '/projects/p1/calendar?date=2026-09-15';
-
-const comment: TaskComment = {
-  id: 'c1',
-  taskId: 't1',
-  author: bob,
-  body: plainTextToRichTextDoc('Looks good'),
-  createdAt: '2026-09-02T00:00:00.000Z',
-  editedAt: null,
-};
 
 const activeTasks: Task[] = [
   makeTask({
@@ -55,7 +40,6 @@ function baseRoutes(role: ProjectRole = 'staff') {
     'GET /api/projects/p1': json(makeProject({ role })),
     'GET /api/projects/p1/tasks': json(activeTasks),
     'GET /api/projects/p1/tasks?includeArchived=true': json([...activeTasks, archivedTask]),
-    'GET /api/projects/p1/tasks/t1/comments': json([comment]),
   };
 }
 
@@ -108,7 +92,8 @@ describe('ProjectCalendarView', () => {
 
     const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
 
-    expect(wrapper.get('h2').text()).toBe('Project One のカレンダー');
+    expect(wrapper.get('h1').text()).toBe('Project One');
+    expect(wrapper.get('a[aria-current="page"]').text()).toBe('カレンダー');
     expect(label(wrapper)).toBe('2026年9月');
     const headers = wrapper.findAll('[data-date]');
     expect(headers).toHaveLength(30);
@@ -191,7 +176,9 @@ describe('ProjectCalendarView', () => {
     expect(bands(wrapper, 't5')).toHaveLength(0);
     expect(rowIds(wrapper)).not.toContain('t5');
 
-    await wrapper.get('input[aria-label="アーカイブを表示"]').setValue(true);
+    const toggle = wrapper.get('[role="checkbox"]');
+    expect(wrapper.get(`label[for="${toggle.attributes('id')}"]`).text()).toBe('アーカイブを表示');
+    await toggle.trigger('click');
     await flushPromises();
 
     expect(rowIds(wrapper)).toContain('t5');
@@ -202,188 +189,39 @@ describe('ProjectCalendarView', () => {
     expect(archived?.find('[data-testid="handle-start"]').exists()).toBe(false);
   });
 
-  it('opens a panel with the task details and comments', async () => {
+  it('opens the task page from a band', async () => {
     stubApi(baseRoutes());
 
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(false);
-
+    const { wrapper, router } = await mountAt(ProjectCalendarView, PATH, alice);
     await openBand(wrapper, 't1');
 
-    const panel = wrapper.get('[data-testid="task-panel"]');
-    expect(panel.element.tagName).toBe('ASIDE');
-    expect(panel.get('h3').text()).toBe('Design');
-    expect(panel.text()).toContain('未完了');
-    expect(panel.text()).toContain('Bob');
-    expect(panel.text()).toContain('2026-09-14 〜 2026-09-16');
-    expect(panel.findAll('[data-testid="comment"]').map((c) => c.text())).toEqual([
-      expect.stringContaining('Looks good'),
-    ]);
-    expect(panel.get('button[aria-label="色: 青"]').attributes('aria-pressed')).toBe('true');
-    expect(panel.get('button[aria-label="色: 赤"]').attributes('aria-pressed')).toBe('false');
-    expect(panel.find('[data-testid="create-comment"]').exists()).toBe(true);
-
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    await flushPromises();
-    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(false);
+    expect(router.currentRoute.value.name).toBe('task');
+    expect(router.currentRoute.value.params).toEqual({ projectId: 'p1', taskId: 't1' });
+    expect(wrapper.find('aside').exists()).toBe(false);
   });
 
-  it('opens the panel from a row label', async () => {
+  it('opens the task page from a row label', async () => {
     stubApi(baseRoutes());
 
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
+    const { wrapper, router } = await mountAt(ProjectCalendarView, PATH, alice);
     await wrapper
       .get('[data-testid="task-row"][data-task-id="t3"] [data-testid="task-row-label"]')
       .trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="task-panel"] h3').text()).toBe('Someday');
-  });
-
-  it('cancels a title edit with Escape without closing the panel', async () => {
-    stubApi(baseRoutes());
-
-    // Attached so the keydown bubbles from the input up to the panel's window listener.
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice, {
-      attachTo: document.body,
-    });
-    await openBand(wrapper, 't1');
-    const panel = wrapper.get('[data-testid="task-panel"]');
-    expect(panel.get('h3').text()).toBe('Design');
-    await findButton(panel, 'タイトルを編集').trigger('click');
-    const input = panel.get('input[aria-label="タイトル"]');
-    await input.setValue('Discarded');
-
-    input.element.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-    );
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(true);
-    expect(panel.find('input[aria-label="タイトル"]').exists()).toBe(false);
-    expect(panel.get('h3').text()).toBe('Design');
-    wrapper.unmount();
-  });
-
-  it('closes the panel with the close button', async () => {
-    stubApi(baseRoutes());
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    await openBand(wrapper, 't1');
-    await wrapper.get('[data-testid="task-panel"] button[aria-label="閉じる"]').trigger('click');
-
-    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(false);
-  });
-
-  it('posts a comment', async () => {
-    const requests = stubApi({
-      ...baseRoutes(),
-      'POST /api/projects/p1/tasks/t1/comments': json(
-        { ...comment, id: 'c2', body: plainTextToRichTextDoc('New') },
-        201,
-      ),
-    });
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    await openBand(wrapper, 't1');
-    await typeInto(wrapper, 'コメント', 'New');
-    await wrapper.get('[data-testid="create-comment"]').trigger('submit');
-    await flushPromises();
-
-    const post = requests.mock.calls
-      .map(([req]) => req)
-      .find((req) => req.method === 'POST' && req.path.endsWith('/comments'));
-    expect(post?.body).toEqual({ body: plainTextToRichTextDoc('New') });
-  });
-
-  it('changes the color from a swatch', async () => {
-    const requests = stubApi({
-      ...baseRoutes(),
-      'PATCH /api/projects/p1/tasks/t1': json(makeTask({ id: 't1', color: 'teal' })),
-    });
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    await openBand(wrapper, 't1');
-    await wrapper.get('button[aria-label="色: 青緑"]').trigger('click');
-    await flushPromises();
-
-    const patch = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'PATCH');
-    expect(patch?.body).toEqual({ color: 'teal' });
-  });
-
-  it('archives the selected task and closes the panel', async () => {
-    const requests = stubApi({
-      ...baseRoutes(),
-      'POST /api/projects/p1/tasks/t1/archive': json(
-        makeTask({ id: 't1', archivedAt: '2026-09-28T00:00:00.000Z' }),
-      ),
-    });
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    await openBand(wrapper, 't1');
-    await findButton(wrapper.get('[data-testid="task-panel"]'), 'アーカイブ').trigger('click');
-    await flushPromises();
-
-    expect(requestLines(requests)).toContain('POST /api/projects/p1/tasks/t1/archive');
-    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(false);
-  });
-
-  it('marks an edited description in the panel', async () => {
-    stubApi({
-      ...baseRoutes('substaff'),
-      'GET /api/projects/p1/tasks': json([
-        makeTask({
-          ...activeTasks[0],
-          description: plainTextToRichTextDoc('Design notes'),
-          descriptionEditedAt: '2026-09-05T00:00:00.000Z',
-        }),
-      ]),
-    });
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, bob);
-    await openBand(wrapper, 't1');
-
-    const panel = wrapper.get('[data-testid="task-panel"]');
-    expect(panel.get('[data-testid="description"]').text()).toBe('Design notes');
-    expect(panel.get('[data-testid="description-edited"]').text()).toBe('更新履歴あり');
-    expect(panel.findAll('button').map((b) => b.text())).not.toContain('本文を編集');
-  });
-
-  it('edits the description from the panel', async () => {
-    const requests = stubApi({
-      ...baseRoutes(),
-      'PATCH /api/projects/p1/tasks/t1': (body) =>
-        json(makeTask({ id: 't1', ...(body as Partial<Task>) })),
-    });
-
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
-    await openBand(wrapper, 't1');
-    const panel = wrapper.get('[data-testid="task-panel"]');
-    await findButton(panel, '本文を編集').trigger('click');
-    await flushPromises();
-    await replaceContent(panel, '本文', 'Panel body');
-    await panel.get('.task-description form').trigger('submit');
-    await flushPromises();
-
-    const patch = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'PATCH');
-    expect(patch?.body).toEqual({ description: plainTextToRichTextDoc('Panel body') });
-    expect(panel.find('.task-description form').exists()).toBe(false);
+    expect(router.currentRoute.value.fullPath).toBe('/projects/p1/tasks/t3');
   });
 
   it('gives substaff a read-only calendar', async () => {
     stubApi(baseRoutes('substaff'));
 
-    const { wrapper } = await mountAt(ProjectCalendarView, PATH, bob);
+    const { wrapper, router } = await mountAt(ProjectCalendarView, PATH, bob);
 
     expect(wrapper.find('[data-testid="handle-start"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="handle-end"]').exists()).toBe(false);
 
     await openBand(wrapper, 't1');
-    const panel = wrapper.get('[data-testid="task-panel"]');
-    expect(panel.find('button[aria-label^="色:"]').exists()).toBe(false);
-    expect(panel.findAll('button').map((b) => b.text())).not.toContain('アーカイブ');
-    expect(panel.find('[data-testid="create-comment"]').exists()).toBe(false);
-    expect(panel.text()).toContain('Looks good');
+    expect(router.currentRoute.value.fullPath).toBe('/projects/p1/tasks/t1');
   });
 
   it('saves dragged dates', async () => {

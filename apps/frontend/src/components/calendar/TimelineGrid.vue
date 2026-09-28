@@ -17,7 +17,6 @@ const props = defineProps<{
   tasks: Task[];
   editable: boolean;
   today: DateString;
-  selectedTaskId: string | null;
   dateOverrides: Record<string, DateRange>;
   columnWidth: number;
 }>();
@@ -92,7 +91,7 @@ function grab(event: PointerEvent, task: Task, mode: DragMode) {
 <template>
   <div
     ref="gridElement"
-    class="timeline"
+    class="overflow-x-auto rounded-[4px] border border-border [--label-width:200px]"
     data-testid="timeline-grid"
     :style="{ '--column-width': `${columnWidth}px` }"
     @pointermove="onPointerMove"
@@ -100,17 +99,28 @@ function grab(event: PointerEvent, task: Task, mode: DragMode) {
     @pointercancel="onPointerCancel"
     @lostpointercapture="onPointerCancel"
   >
-    <div class="header">
-      <div class="corner">タスク</div>
+    <div class="flex w-max min-w-full border-b border-border bg-muted text-xs">
+      <div
+        class="sticky left-0 z-2 w-(--label-width) flex-none border-r border-border bg-muted px-2 py-1 font-bold"
+      >
+        タスク
+      </div>
       <div
         v-for="day in days"
         :key="day.date"
-        class="day"
-        :class="{ weekend: day.weekend, today: day.today }"
+        class="flex w-(--column-width) flex-none flex-col items-center border-l border-border/60 py-0.5 leading-[1.3]"
+        :class="[
+          { weekend: day.weekend, today: day.today },
+          day.today
+            ? 'bg-primary font-bold text-primary-foreground'
+            : day.weekend
+              ? 'bg-foreground/5 text-muted-foreground'
+              : '',
+        ]"
         :data-date="day.date"
       >
-        <span class="day-label">{{ day.label }}</span>
-        <span class="weekday">{{ day.weekday }}</span>
+        <span>{{ day.label }}</span>
+        <span class="text-[11px]">{{ day.weekday }}</span>
       </div>
     </div>
     <TimelineRow
@@ -123,67 +133,8 @@ function grab(event: PointerEvent, task: Task, mode: DragMode) {
       :column-width="columnWidth"
       :draggable="isDraggable(row.task)"
       :dragging="draggingTaskId === row.task.id"
-      :selected="selectedTaskId === row.task.id"
       @grab="(event, mode) => grab(event, row.task, mode)"
       @open="emit('open', row.task.id)"
     />
   </div>
 </template>
-
-<style scoped>
-.timeline {
-  --label-width: 200px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  overflow-x: auto;
-}
-
-.header {
-  display: flex;
-  width: max-content;
-  min-width: 100%;
-  border-bottom: 1px solid #ddd;
-  background: #f5f5f5;
-  font-size: 12px;
-}
-
-.corner {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  box-sizing: border-box;
-  flex: none;
-  width: var(--label-width);
-  padding: 4px 8px;
-  border-right: 1px solid #ddd;
-  background: #f5f5f5;
-  font-weight: bold;
-}
-
-.day {
-  box-sizing: border-box;
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: center;
-  width: var(--column-width);
-  padding: 2px 0;
-  border-left: 1px solid #eee;
-  line-height: 1.3;
-}
-
-.day.weekend {
-  background: #ececec;
-  color: #777;
-}
-
-.day.today {
-  background: #1d4ed8;
-  color: #fff;
-  font-weight: bold;
-}
-
-.weekday {
-  font-size: 11px;
-}
-</style>
