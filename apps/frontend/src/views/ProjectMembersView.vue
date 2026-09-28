@@ -255,6 +255,9 @@ function formatDate(iso: string) {
                       required
                       aria-label="メールアドレス"
                     />
+                    <p class="text-xs text-muted-foreground">
+                      Google アカウントでログインできるメールアドレスのみ招待できます。
+                    </p>
                   </div>
                   <div class="grid gap-2">
                     <Label for="invite-role">ロール</Label>
