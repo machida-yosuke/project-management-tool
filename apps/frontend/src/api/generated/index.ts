@@ -1,3 +1,4 @@
+export * from './attachments/attachments';
 export * from './auth/auth';
 export * from './comments/comments';
 export * from './invitations/invitations';

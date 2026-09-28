@@ -39,12 +39,15 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { RichTextDoc } from './richTextDoc';
 import type { TaskColor } from './taskColor';
 
 export interface CreateTaskRequest {
@@ -54,11 +57,8 @@ export interface CreateTaskRequest {
      * @maxLength 200
      */
   title: string;
-  /**
-     * 省略時は空文字
-     * @maxLength 4000
-     */
-  description?: string;
+  /** 省略時は空のドキュメント（空段落 1 つ） */
+  description?: RichTextDoc;
   /**
      * 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` または省略で担当者なし。
      * @nullable

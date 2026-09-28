@@ -181,8 +181,7 @@ async function deleteAccount() {
       <h3>退会</h3>
       <template v-if="confirmingDelete">
         <p>
-          退会すると元に戻せません。自分だけが参加しているプロジェクトは削除されます。作成した TODO
-          やコメントは「退会したユーザー」として残ります。
+          退会すると元に戻せません。自分だけが参加しているプロジェクトは削除されます。作成したタスクやコメントは「退会したユーザー」として残ります。
         </p>
         <div class="inline-form">
           <button type="button" class="danger" :disabled="deleting" @click="deleteAccount">

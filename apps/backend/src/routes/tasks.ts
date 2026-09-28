@@ -8,7 +8,7 @@ import { EDITOR_ROLES, assertRole, requireMembership } from '../projects/authori
 import { createTask, listTasks, setTaskArchived, updateTask } from '../projects/tasks';
 
 const title = z.string().trim().min(1).max(200);
-const description = z.string().max(4000);
+const description = z.unknown();
 const assigneeId = z.string().nullable();
 // z.iso.date() rejects non-existent dates such as 2026-02-30, unlike a bare regex.
 const calendarDate = z.iso.date();

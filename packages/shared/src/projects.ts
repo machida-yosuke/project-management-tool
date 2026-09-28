@@ -1,3 +1,5 @@
+import type { RichTextDoc } from './rich-text';
+
 export const PROJECT_ROLES = ['admin', 'staff', 'substaff'] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
@@ -58,7 +60,8 @@ export interface Task {
   id: string;
   projectId: string;
   title: string;
-  description: string;
+  description: RichTextDoc;
+  descriptionEditedAt: string | null;
   status: TaskStatus;
   assignee: UserSummary | null;
   startDate: string | null;
@@ -74,8 +77,9 @@ export interface TaskComment {
   id: string;
   taskId: string;
   author: UserSummary;
-  body: string;
+  body: RichTextDoc;
   createdAt: string;
+  editedAt: string | null;
 }
 
 export interface ApiError {

@@ -3,9 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { TASK_COLORS, canEdit } from '@pm-tool/shared';
 import {
-  getListCommentsQueryKey,
   useArchiveTask,
-  useCreateComment,
   useCreateTask,
   useGetProject,
   useListComments,
@@ -15,14 +13,18 @@ import {
   useUpdateTask,
 } from '../api/generated';
 import type { Task, UpdateTaskRequest } from '../api/generated/models';
+import CommentThread from '../components/CommentThread.vue';
+import TaskDescription from '../components/TaskDescription.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../lib/task-colors';
+import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
 const invalidate = useInvalidate();
+const authStore = useAuthStore();
 
 const projectId = computed(() => String(route.params.projectId));
 const selectedTaskId = ref<string | null>(null);
@@ -63,7 +65,6 @@ const commentsError = computed(() => {
 });
 const actionError = ref('');
 const newTitle = ref('');
-const newComment = ref('');
 
 watch(projectId, () => {
   selectedTaskId.value = null;
@@ -86,11 +87,6 @@ const archiveTaskMutation = useArchiveTask({
   },
 });
 const unarchiveTaskMutation = useUnarchiveTask({ mutation: { onSuccess: invalidateTasks } });
-const createCommentMutation = useCreateComment({
-  mutation: {
-    onSuccess: (_, vars) => invalidate(getListCommentsQueryKey(vars.projectId, vars.taskId)),
-  },
-});
 
 async function runAction(action: () => Promise<unknown>, messages: Record<string, string> = {}) {
   actionError.value = '';
@@ -186,26 +182,6 @@ function unarchiveTask(task: Task) {
 function selectTask(task: Task) {
   selectedTaskId.value = task.id;
 }
-
-function postComment() {
-  const taskId = selectedTaskId.value;
-  if (!taskId) return;
-  return runAction(
-    async () => {
-      await createCommentMutation.mutateAsync({
-        projectId: projectId.value,
-        taskId,
-        createCommentRequest: { body: newComment.value.trim() },
-      });
-      newComment.value = '';
-    },
-    { validation_error: 'コメントは1〜4000文字で入力してください' },
-  );
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('ja-JP');
-}
 </script>
 
 <template>
@@ -226,7 +202,7 @@ function formatDate(iso: string) {
 
       <div class="columns">
         <section class="tasks">
-          <h3>TODO</h3>
+          <h3>タスク</h3>
           <form
             v-if="editable"
             class="inline-form"
@@ -236,10 +212,10 @@ function formatDate(iso: string) {
             <input
               v-model="newTitle"
               type="text"
-              placeholder="TODO を追加"
+              placeholder="タスクを追加"
               required
               maxlength="200"
-              aria-label="TODO のタイトル"
+              aria-label="タスクのタイトル"
             />
             <button type="submit">追加</button>
           </form>
@@ -247,7 +223,7 @@ function formatDate(iso: string) {
             <input v-model="includeArchived" type="checkbox" aria-label="アーカイブ済みも表示" />
             アーカイブ済みも表示
           </label>
-          <p v-if="tasks.length === 0">TODO はありません</p>
+          <p v-if="tasks.length === 0">タスクはありません</p>
           <ul class="task-list">
             <li
               v-for="task in tasks"
@@ -341,41 +317,18 @@ function formatDate(iso: string) {
           <!-- A <div>, not <template>: happy-dom returns null for form.nextSibling, which breaks fragment removal in tests. -->
           <div v-if="selectedTask">
             <h3>{{ selectedTask.title }}</h3>
-            <p v-if="selectedTask.description">
-              {{ selectedTask.description }}
-            </p>
-            <p v-if="commentsError" class="error" role="alert">{{ commentsError }}</p>
-            <p v-else-if="comments.length === 0" class="muted">コメントはありません</p>
-            <ul class="comment-list">
-              <li v-for="comment in comments" :key="comment.id" data-testid="comment">
-                <div class="comment-meta muted">
-                  <UserAvatar
-                    :name="comment.author.name"
-                    :avatar-url="comment.author.avatarUrl"
-                    :size="20"
-                  />
-                  {{ comment.author.name }} ・ {{ formatDate(comment.createdAt) }}
-                </div>
-                <div class="comment-body">{{ comment.body }}</div>
-              </li>
-            </ul>
-            <form
-              v-if="editable"
-              class="stack-form"
-              data-testid="create-comment"
-              @submit.prevent="postComment"
-            >
-              <textarea
-                v-model="newComment"
-                placeholder="コメントを書く"
-                required
-                maxlength="4000"
-                aria-label="コメント"
-              />
-              <button type="submit">投稿</button>
-            </form>
+            <TaskDescription :key="selectedTask.id" :task="selectedTask" :editable="editable" />
+            <CommentThread
+              :key="selectedTask.id"
+              :project-id="projectId"
+              :task-id="selectedTask.id"
+              :comments="comments"
+              :comments-error="commentsError"
+              :editable="editable"
+              :current-user-id="authStore.user?.id ?? null"
+            />
           </div>
-          <p v-else class="muted">TODO を選択するとスレッドが表示されます</p>
+          <p v-else class="muted">タスクを選択するとスレッドが表示されます</p>
         </section>
       </div>
     </template>
@@ -407,8 +360,7 @@ function formatDate(iso: string) {
   padding-left: 24px;
 }
 
-.task-list,
-.comment-list {
+.task-list {
   list-style: none;
   padding: 0;
 }
@@ -433,7 +385,6 @@ function formatDate(iso: string) {
 
 .task-row,
 .task-meta,
-.comment-meta,
 .inline-form {
   display: flex;
   align-items: center;
@@ -460,21 +411,6 @@ function formatDate(iso: string) {
   padding: 0;
   cursor: pointer;
   font: inherit;
-}
-
-.comment-list > li {
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
-}
-
-.comment-body {
-  white-space: pre-wrap;
-}
-
-.stack-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .muted {

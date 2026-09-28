@@ -3,9 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { canEdit, type TaskColor } from '@pm-tool/shared';
 import {
-  getListCommentsQueryKey,
   useArchiveTask,
-  useCreateComment,
   useGetProject,
   useListComments,
   useListTasks,
@@ -29,12 +27,14 @@ import {
   type DateString,
 } from '../lib/dates';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import { useAuthStore } from '../stores/auth';
 
 type ViewMode = 'month' | 'week';
 
 const route = useRoute();
 const router = useRouter();
 const invalidate = useInvalidate();
+const authStore = useAuthStore();
 
 const projectId = computed(() => String(route.params.projectId));
 const today = ref(todayString());
@@ -43,7 +43,6 @@ const showArchived = ref(false);
 const selectedTaskId = ref<string | null>(null);
 const dateOverrides = reactive<Record<string, DateRange>>({});
 const actionError = ref('');
-const commentDraft = ref('');
 
 function dateFromQuery(value: unknown): DateString {
   return typeof value === 'string' && isDateString(value) ? value : today.value;
@@ -121,11 +120,6 @@ const archiveTaskMutation = useArchiveTask({
   },
 });
 const unarchiveTaskMutation = useUnarchiveTask({ mutation: { onSuccess: invalidateTasks } });
-const createCommentMutation = useCreateComment({
-  mutation: {
-    onSuccess: (_, vars) => invalidate(getListCommentsQueryKey(vars.projectId, vars.taskId)),
-  },
-});
 
 async function runAction(action: () => Promise<unknown>, messages: Record<string, string> = {}) {
   actionError.value = '';
@@ -207,22 +201,6 @@ function unarchiveSelected() {
   if (!taskId) return;
   return runAction(() => unarchiveTaskMutation.mutateAsync({ projectId: projectId.value, taskId }));
 }
-
-function postComment() {
-  const taskId = selectedTaskId.value;
-  if (!taskId) return;
-  return runAction(
-    async () => {
-      await createCommentMutation.mutateAsync({
-        projectId: projectId.value,
-        taskId,
-        createCommentRequest: { body: commentDraft.value.trim() },
-      });
-      commentDraft.value = '';
-    },
-    { validation_error: 'コメントは1〜4000文字で入力してください' },
-  );
-}
 </script>
 
 <template>
@@ -231,7 +209,9 @@ function postComment() {
     <div v-if="project">
       <header class="header">
         <h2>{{ project.name }} のカレンダー</h2>
-        <router-link :to="{ name: 'project', params: { projectId: project.id } }">TODO</router-link>
+        <router-link :to="{ name: 'project', params: { projectId: project.id } }">
+          タスク
+        </router-link>
         <router-link :to="{ name: 'project-members', params: { projectId: project.id } }">
           メンバー
         </router-link>
@@ -279,16 +259,15 @@ function postComment() {
         />
         <TaskDetailPanel
           v-if="selectedTask"
-          v-model:comment-draft="commentDraft"
           :task="selectedTask"
           :comments="comments"
           :comments-error="commentsError"
           :editable="editable"
+          :current-user-id="authStore.user?.id ?? null"
           @close="closePanel"
           @change-color="changeColor"
           @archive="archiveSelected"
           @unarchive="unarchiveSelected"
-          @post-comment="postComment"
         />
       </div>
     </div>

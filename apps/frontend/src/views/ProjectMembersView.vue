@@ -155,7 +155,7 @@ function formatDate(iso: string) {
       <header class="header">
         <h2>{{ project.name }} のメンバー</h2>
         <router-link :to="{ name: 'project', params: { projectId: project.id } }">
-          TODO に戻る
+          タスクに戻る
         </router-link>
         <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
           カレンダー

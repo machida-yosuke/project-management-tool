@@ -4,7 +4,7 @@ export default defineConfig({
   api: {
     input: {
       target: '../../docs/openapi.yaml',
-      filters: { mode: 'exclude', tags: ['health', 'avatars'] },
+      filters: { mode: 'exclude', tags: ['health', 'avatars', 'files'] },
     },
     output: {
       target: 'src/api/generated/api.ts',

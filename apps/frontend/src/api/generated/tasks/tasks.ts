@@ -39,7 +39,9 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -76,7 +78,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
   /**
  * 全ロールが閲覧できる。作成日時の昇順。既定ではアーカイブ済みを除く。
- * @summary TODO の一覧を取得する
+ * @summary タスクの一覧を取得する
  */
 export const listTasks = (
     projectId: string,
@@ -105,7 +107,7 @@ export function useListTasks<TError = globalThis.Error, TInitial extends Awaited
 }
 /**
  * `admin` / `staff` のみ。`status` は `open` で作成される。
- * @summary TODO を作成する
+ * @summary タスクを作成する
  */
 export const createTask = (
     projectId: string,
@@ -134,7 +136,7 @@ export function useCreateTask<TError = globalThis.Error, TContext extends Record
 }
 /**
  * `admin` / `staff` のみ。指定したフィールドだけ更新し、`updatedAt` は常に更新される。
- * @summary TODO を更新する
+ * @summary タスクを更新する
  */
 export const updateTask = (
     projectId: string,
@@ -163,8 +165,8 @@ export function useUpdateTask<TError = globalThis.Error, TContext extends Record
   return useColadaMutation(getUpdateTaskMutationOptions(coladaOptions));
 }
 /**
- * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。
- * @summary TODO をアーカイブする
+ * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在のタスクを返す。アーカイブ済みでも PATCH・コメントは可能。
+ * @summary タスクをアーカイブする
  */
 export const archiveTask = (
     projectId: string,
@@ -190,8 +192,8 @@ export function useArchiveTask<TError = globalThis.Error, TContext extends Recor
   return useColadaMutation(getArchiveTaskMutationOptions(coladaOptions));
 }
 /**
- * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。
- * @summary TODO のアーカイブを解除する
+ * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在のタスクを返す。アーカイブ済みでも PATCH・コメントは可能。
+ * @summary タスクのアーカイブを解除する
  */
 export const unarchiveTask = (
     projectId: string,

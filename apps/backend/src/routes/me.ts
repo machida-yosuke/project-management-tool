@@ -7,6 +7,7 @@ import type { AccountDeletionBlocked } from '@pm-tool/shared';
 import { destroySession } from '../auth/session';
 import type { AuthEnv } from '../middleware/require-auth';
 import { onValidationError } from '../middleware/validation';
+import { MULTIPART_OVERHEAD_BYTES } from '../middleware/upload';
 import { AVATAR_CONTENT_TYPES, MAX_AVATAR_BYTES, MAX_AVATAR_DIMENSION } from '../users/avatar';
 import { readImageDimensions } from '../users/image-dimensions';
 import {
@@ -18,9 +19,6 @@ import {
 } from '../users/account';
 
 const updateSchema = z.object({ name: z.string().trim().min(1).max(100) });
-
-// Leaves room for the multipart envelope; the file itself is checked against MAX_AVATAR_BYTES.
-const MULTIPART_OVERHEAD_BYTES = 16 * 1024;
 
 export const meRoute = new Hono<AuthEnv>()
   .patch('/', zValidator('json', updateSchema, onValidationError), async (c) => {

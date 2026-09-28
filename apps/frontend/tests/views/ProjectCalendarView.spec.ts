@@ -1,10 +1,16 @@
 import { flushPromises, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ProjectRole, Task, TaskComment } from '@pm-tool/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  plainTextToRichTextDoc,
+  type ProjectRole,
+  type Task,
+  type TaskComment,
+} from '@pm-tool/shared';
 import TimelineGrid from '../../src/components/calendar/TimelineGrid.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
 import { alice, bob, json, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { mountAt } from '../helpers/mount';
+import { replaceContent, typeInto } from '../helpers/rich-text';
 
 const PATH = '/projects/p1/calendar?date=2026-09-15';
 
@@ -12,8 +18,9 @@ const comment: TaskComment = {
   id: 'c1',
   taskId: 't1',
   author: bob,
-  body: 'Looks good',
+  body: plainTextToRichTextDoc('Looks good'),
   createdAt: '2026-09-02T00:00:00.000Z',
+  editedAt: null,
 };
 
 const activeTasks: Task[] = [
@@ -88,6 +95,10 @@ function requestLines(requests: ReturnType<typeof stubApi>) {
 }
 
 describe('ProjectCalendarView', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -242,19 +253,22 @@ describe('ProjectCalendarView', () => {
   it('posts a comment', async () => {
     const requests = stubApi({
       ...baseRoutes(),
-      'POST /api/projects/p1/tasks/t1/comments': json({ ...comment, id: 'c2', body: 'New' }, 201),
+      'POST /api/projects/p1/tasks/t1/comments': json(
+        { ...comment, id: 'c2', body: plainTextToRichTextDoc('New') },
+        201,
+      ),
     });
 
     const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
     await openBand(wrapper, 't1');
-    await wrapper.get('textarea[aria-label="コメント"]').setValue('  New  ');
+    await typeInto(wrapper, 'コメント', 'New');
     await wrapper.get('[data-testid="create-comment"]').trigger('submit');
     await flushPromises();
 
     const post = requests.mock.calls
       .map(([req]) => req)
       .find((req) => req.method === 'POST' && req.path.endsWith('/comments'));
-    expect(post?.body).toEqual({ body: 'New' });
+    expect(post?.body).toEqual({ body: plainTextToRichTextDoc('New') });
   });
 
   it('changes the color from a swatch', async () => {
@@ -287,6 +301,48 @@ describe('ProjectCalendarView', () => {
 
     expect(requestLines(requests)).toContain('POST /api/projects/p1/tasks/t1/archive');
     expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(false);
+  });
+
+  it('marks an edited description in the panel', async () => {
+    stubApi({
+      ...baseRoutes('substaff'),
+      'GET /api/projects/p1/tasks': json([
+        makeTask({
+          ...activeTasks[0],
+          description: plainTextToRichTextDoc('Design notes'),
+          descriptionEditedAt: '2026-09-05T00:00:00.000Z',
+        }),
+      ]),
+    });
+
+    const { wrapper } = await mountAt(ProjectCalendarView, PATH, bob);
+    await openBand(wrapper, 't1');
+
+    const panel = wrapper.get('[data-testid="task-panel"]');
+    expect(panel.get('[data-testid="description"]').text()).toBe('Design notes');
+    expect(panel.get('[data-testid="description-edited"]').text()).toBe('更新履歴あり');
+    expect(panel.findAll('button').map((b) => b.text())).not.toContain('本文を編集');
+  });
+
+  it('edits the description from the panel', async () => {
+    const requests = stubApi({
+      ...baseRoutes(),
+      'PATCH /api/projects/p1/tasks/t1': (body) =>
+        json(makeTask({ id: 't1', ...(body as Partial<Task>) })),
+    });
+
+    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
+    await openBand(wrapper, 't1');
+    const panel = wrapper.get('[data-testid="task-panel"]');
+    await findButton(panel, '本文を編集').trigger('click');
+    await flushPromises();
+    await replaceContent(panel, '本文', 'Panel body');
+    await panel.get('.task-description form').trigger('submit');
+    await flushPromises();
+
+    const patch = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'PATCH');
+    expect(patch?.body).toEqual({ description: plainTextToRichTextDoc('Panel body') });
+    expect(panel.find('.task-description form').exists()).toBe(false);
   });
 
   it('gives substaff a read-only calendar', async () => {

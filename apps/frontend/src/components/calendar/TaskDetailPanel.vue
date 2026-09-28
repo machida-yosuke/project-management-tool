@@ -2,6 +2,8 @@
 import { onBeforeUnmount, onMounted } from 'vue';
 import { TASK_COLORS, type TaskColor } from '@pm-tool/shared';
 import type { Task, TaskComment } from '../../api/generated/models';
+import CommentThread from '../CommentThread.vue';
+import TaskDescription from '../TaskDescription.vue';
 import UserAvatar from '../UserAvatar.vue';
 import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../../lib/task-colors';
 
@@ -10,6 +12,7 @@ defineProps<{
   comments: TaskComment[];
   commentsError: string;
   editable: boolean;
+  currentUserId: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -17,10 +20,7 @@ const emit = defineEmits<{
   changeColor: [color: TaskColor];
   archive: [];
   unarchive: [];
-  postComment: [];
 }>();
-
-const commentDraft = defineModel<string>('commentDraft', { required: true });
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') emit('close');
@@ -40,7 +40,7 @@ function formatTimestamp(iso: string) {
       <h3>{{ task.title }}</h3>
       <button type="button" aria-label="閉じる" @click="emit('close')">×</button>
     </div>
-    <p v-if="task.description" class="description">{{ task.description }}</p>
+    <TaskDescription :key="task.id" :task="task" :editable="editable" />
     <dl class="fields">
       <dt>状態</dt>
       <dd data-testid="task-status">{{ task.status === 'done' ? '完了' : '未完了' }}</dd>
@@ -82,36 +82,15 @@ function formatTimestamp(iso: string) {
     </div>
 
     <h4>コメント</h4>
-    <p v-if="commentsError" class="error" role="alert">{{ commentsError }}</p>
-    <p v-else-if="comments.length === 0" class="muted">コメントはありません</p>
-    <ul class="comment-list">
-      <li v-for="comment in comments" :key="comment.id" data-testid="comment">
-        <div class="comment-meta muted">
-          <UserAvatar
-            :name="comment.author.name"
-            :avatar-url="comment.author.avatarUrl"
-            :size="20"
-          />
-          {{ comment.author.name }} ・ {{ formatTimestamp(comment.createdAt) }}
-        </div>
-        <div class="comment-body">{{ comment.body }}</div>
-      </li>
-    </ul>
-    <form
-      v-if="editable"
-      class="stack-form"
-      data-testid="create-comment"
-      @submit.prevent="emit('postComment')"
-    >
-      <textarea
-        v-model="commentDraft"
-        placeholder="コメントを書く"
-        required
-        maxlength="4000"
-        aria-label="コメント"
-      />
-      <button type="submit">投稿</button>
-    </form>
+    <CommentThread
+      :key="task.id"
+      :project-id="task.projectId"
+      :task-id="task.id"
+      :comments="comments"
+      :comments-error="commentsError"
+      :editable="editable"
+      :current-user-id="currentUserId"
+    />
   </aside>
 </template>
 
@@ -132,10 +111,6 @@ function formatTimestamp(iso: string) {
   margin: 0;
 }
 
-.description {
-  white-space: pre-wrap;
-}
-
 .fields {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -147,8 +122,7 @@ function formatTimestamp(iso: string) {
   margin: 0;
 }
 
-.assignee,
-.comment-meta {
+.assignee {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -178,33 +152,5 @@ function formatTimestamp(iso: string) {
 
 .swatch[aria-pressed='true'] {
   border-color: #111;
-}
-
-.comment-list {
-  list-style: none;
-  padding: 0;
-}
-
-.comment-list > li {
-  padding: 8px 0;
-  border-bottom: 1px solid #eee;
-}
-
-.comment-body {
-  white-space: pre-wrap;
-}
-
-.stack-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.muted {
-  color: #666;
-}
-
-.error {
-  color: #c00;
 }
 </style>

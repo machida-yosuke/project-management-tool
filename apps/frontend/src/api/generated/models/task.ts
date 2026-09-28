@@ -39,13 +39,16 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
 import type { CalendarDate } from './calendarDate';
+import type { RichTextDoc } from './richTextDoc';
 import type { TaskColor } from './taskColor';
 import type { TaskStatus } from './taskStatus';
 import type { Timestamp } from './timestamp';
@@ -55,7 +58,9 @@ export interface Task {
   id: string;
   projectId: string;
   title: string;
-  description: string;
+  description: RichTextDoc;
+  /** 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・色の変更では更新されない。未編集なら `null` */
+  descriptionEditedAt: Timestamp | null;
   status: TaskStatus;
   assignee: UserSummary | null;
   /** 開始日。`endDate` と両方 `null` か両方あり */

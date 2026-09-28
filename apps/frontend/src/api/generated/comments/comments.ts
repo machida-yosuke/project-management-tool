@@ -39,7 +39,9 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -63,7 +65,8 @@ import type {
 
 import type {
   CreateCommentRequest,
-  TaskComment
+  TaskComment,
+  UpdateCommentRequest
 } from '../models';
 
 import { customInstance } from '../../../lib/api';
@@ -74,7 +77,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
   /**
  * 全ロールが閲覧できる。作成日時の昇順。
- * @summary TODO のコメント一覧を取得する
+ * @summary タスクのコメント一覧を取得する
  */
 export const listComments = (
     projectId: string,
@@ -102,7 +105,7 @@ export function useListComments<TError = globalThis.Error, TInitial extends Awai
 }
 /**
  * `admin` / `staff` のみ。
- * @summary TODO にコメントを投稿する
+ * @summary タスクにコメントを投稿する
  */
 export const createComment = (
     projectId: string,
@@ -130,5 +133,37 @@ export function getCreateCommentMutationOptions<TError = globalThis.Error, TCont
 export function useCreateComment<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof createComment>>, CreateCommentMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof createComment>[3]; }) {
   return useColadaMutation(getCreateCommentMutationOptions(coladaOptions));
 }
+/**
+ * 投稿者本人のみ（`admin` / `staff` かつ本人）。`body` を置き換え、`editedAt` を更新する。
+ * @summary コメントを編集する
+ */
+export const updateComment = (
+    projectId: string,
+    taskId: string,
+    commentId: string,
+    updateCommentRequest: UpdateCommentRequest,
+ options?: SecondParameter<typeof customInstance<TaskComment>>,) => {
+      return customInstance<TaskComment>(
+      {url: `/api/projects/${projectId}/tasks/${taskId}/comments/${commentId}`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: updateCommentRequest
+    },
+      options);
+    }
+
+export type UpdateCommentMutationVariables = { projectId: Parameters<typeof updateComment>[0]; taskId: Parameters<typeof updateComment>[1]; commentId: Parameters<typeof updateComment>[2]; updateCommentRequest: Parameters<typeof updateComment>[3] };
+
+export function getUpdateCommentMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, UpdateCommentMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof updateComment>[4]; }): UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, UpdateCommentMutationVariables, TError, TContext> {
+  const coladaRequest = updateComment;
+  return {
+    ...coladaOptions?.mutation,
+    mutation: (coladaVariables: UpdateCommentMutationVariables) => coladaRequest(coladaVariables.projectId, coladaVariables.taskId, coladaVariables.commentId, coladaVariables.updateCommentRequest, coladaOptions?.request),
+  };
+}
+
+export function useUpdateComment<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, UpdateCommentMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof updateComment>[4]; }) {
+  return useColadaMutation(getUpdateCommentMutationOptions(coladaOptions));
+}
 export type ListCommentsResult = NonNullable<Awaited<ReturnType<typeof listComments>>>
 export type CreateCommentResult = NonNullable<Awaited<ReturnType<typeof createComment>>>
+export type UpdateCommentResult = NonNullable<Awaited<ReturnType<typeof updateComment>>>

@@ -6,7 +6,14 @@ import {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios';
-import type { Project, ProjectInvitation, ProjectMember, Task, UserSummary } from '@pm-tool/shared';
+import {
+  emptyRichTextDoc,
+  type Project,
+  type ProjectInvitation,
+  type ProjectMember,
+  type Task,
+  type UserSummary,
+} from '@pm-tool/shared';
 import { axiosInstance } from '../../src/lib/api';
 
 export const API_BASE = 'https://localhost:8787';
@@ -133,7 +140,8 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     id: 't1',
     projectId: 'p1',
     title: 'Write spec',
-    description: '',
+    description: emptyRichTextDoc(),
+    descriptionEditedAt: null,
     status: 'open',
     assignee: null,
     startDate: null,

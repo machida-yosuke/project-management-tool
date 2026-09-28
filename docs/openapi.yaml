@@ -40,7 +40,9 @@ info:
     プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
     メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
     - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
-    - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+    - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+    - 画像添付のアップロード: `admin` / `staff`
+    - コメント編集: 投稿者本人（かつ `admin` / `staff`）
     - メンバー・招待の管理: `admin`
     - プロジェクト削除: オーナーのみ
 servers:
@@ -68,9 +70,9 @@ tags:
   - name: projects
     description: プロジェクト
   - name: tasks
-    description: プロジェクト内の TODO
+    description: プロジェクト内のタスク
   - name: comments
-    description: TODO のスレッド（コメント）
+    description: タスクのスレッド（コメント）
   - name: members
     description: プロジェクトメンバー
   - name: invitations
@@ -79,6 +81,10 @@ tags:
     description: ログイン中ユーザーのアカウント設定
   - name: avatars
     description: アバター画像の配信
+  - name: attachments
+    description: タスク本文・コメントに埋め込む画像添付のアップロード
+  - name: files
+    description: 画像添付の配信
 paths:
   /health:
     get:
@@ -306,7 +312,7 @@ paths:
     delete:
       operationId: deleteProject
       summary: プロジェクトを削除する
-      description: オーナーのみ。メンバー・招待・TODO・コメントもカスケード削除される。
+      description: オーナーのみ。メンバー・招待・タスク・コメントもカスケード削除される。
       tags: [projects]
       responses:
         '204':
@@ -325,19 +331,19 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
     get:
       operationId: listTasks
-      summary: TODO の一覧を取得する
+      summary: タスクの一覧を取得する
       description: 全ロールが閲覧できる。作成日時の昇順。既定ではアーカイブ済みを除く。
       tags: [tasks]
       parameters:
         - name: includeArchived
           in: query
           required: false
-          description: '`true` または `1` でアーカイブ済みの TODO も含める。省略時・`false`・`0` は未アーカイブのみ。それ以外の値は `validation_error`。'
+          description: '`true` または `1` でアーカイブ済みのタスクも含める。省略時・`false`・`0` は未アーカイブのみ。それ以外の値は `validation_error`。'
           schema:
             type: boolean
       responses:
         '200':
-          description: TODO 一覧
+          description: タスク一覧
           content:
             application/json:
               schema:
@@ -354,7 +360,7 @@ paths:
           $ref: '#/components/responses/RateLimited'
     post:
       operationId: createTask
-      summary: TODO を作成する
+      summary: タスクを作成する
       description: '`admin` / `staff` のみ。`status` は `open` で作成される。'
       tags: [tasks]
       requestBody:
@@ -365,7 +371,7 @@ paths:
               $ref: '#/components/schemas/CreateTaskRequest'
       responses:
         '201':
-          description: 作成した TODO
+          description: 作成したタスク
           content:
             application/json:
               schema:
@@ -401,7 +407,7 @@ paths:
       - $ref: '#/components/parameters/TaskId'
     patch:
       operationId: updateTask
-      summary: TODO を更新する
+      summary: タスクを更新する
       description: '`admin` / `staff` のみ。指定したフィールドだけ更新し、`updatedAt` は常に更新される。'
       tags: [tasks]
       requestBody:
@@ -412,7 +418,7 @@ paths:
               $ref: '#/components/schemas/UpdateTaskRequest'
       responses:
         '200':
-          description: 更新後の TODO
+          description: 更新後のタスク
           content:
             application/json:
               schema:
@@ -438,7 +444,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenOrIpBanned'
         '404':
-          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          description: プロジェクトのメンバーでない、またはタスクがこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -453,12 +459,12 @@ paths:
       - $ref: '#/components/parameters/TaskId'
     post:
       operationId: archiveTask
-      summary: TODO をアーカイブする
-      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。'
+      summary: タスクをアーカイブする
+      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在のタスクを返す。アーカイブ済みでも PATCH・コメントは可能。'
       tags: [tasks]
       responses:
         '200':
-          description: 現在の TODO
+          description: 現在のタスク
           content:
             application/json:
               schema:
@@ -468,7 +474,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenOrIpBanned'
         '404':
-          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          description: プロジェクトのメンバーでない、またはタスクがこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -483,12 +489,12 @@ paths:
       - $ref: '#/components/parameters/TaskId'
     post:
       operationId: unarchiveTask
-      summary: TODO のアーカイブを解除する
-      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。'
+      summary: タスクのアーカイブを解除する
+      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在のタスクを返す。アーカイブ済みでも PATCH・コメントは可能。'
       tags: [tasks]
       responses:
         '200':
-          description: 現在の TODO
+          description: 現在のタスク
           content:
             application/json:
               schema:
@@ -498,7 +504,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenOrIpBanned'
         '404':
-          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          description: プロジェクトのメンバーでない、またはタスクがこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -513,7 +519,7 @@ paths:
       - $ref: '#/components/parameters/TaskId'
     get:
       operationId: listComments
-      summary: TODO のコメント一覧を取得する
+      summary: タスクのコメント一覧を取得する
       description: 全ロールが閲覧できる。作成日時の昇順。
       tags: [comments]
       responses:
@@ -530,7 +536,7 @@ paths:
         '403':
           $ref: '#/components/responses/IpBanned'
         '404':
-          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          description: プロジェクトのメンバーでない、またはタスクがこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -540,7 +546,7 @@ paths:
           $ref: '#/components/responses/RateLimited'
     post:
       operationId: createComment
-      summary: TODO にコメントを投稿する
+      summary: タスクにコメントを投稿する
       description: '`admin` / `staff` のみ。'
       tags: [comments]
       requestBody:
@@ -563,7 +569,177 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenOrIpBanned'
         '404':
-          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          description: プロジェクトのメンバーでない、またはタスクがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/tasks/{taskId}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/TaskId'
+      - $ref: '#/components/parameters/CommentId'
+    patch:
+      operationId: updateComment
+      summary: コメントを編集する
+      description: 投稿者本人のみ（`admin` / `staff` かつ本人）。`body` を置き換え、`editedAt` を更新する。
+      tags: [comments]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommentRequest'
+      responses:
+        '200':
+          description: 編集後のコメント
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskComment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            - `forbidden`: コメントの投稿者本人でない、または編集できるロール（`admin` / `staff`）でない
+            - `ip_banned`: 送信元 IP が永久 BAN されている
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value: { error: forbidden }
+                ipBanned:
+                  value: { error: ip_banned }
+        '404':
+          description: プロジェクトのメンバーでない、またはタスクかコメントがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: uploadAttachment
+      summary: 画像添付をアップロードする
+      description: |
+        `admin` / `staff` のみ。`multipart/form-data` の `file` フィールドで送る。PNG / JPEG / WebP、500 KiB 以下、幅・高さとも 2048px 以下。
+        画像ヘッダーから寸法を読むため、ヘッダーが読めない画像も `image_too_large` になる。
+        返る `url`（`/api/projects/{projectId}/attachments/{id}`）をリッチテキストの `image` ノードの `attrs.src` に使う。
+      tags: [attachments]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadAttachmentRequest'
+            encoding:
+              file:
+                contentType: image/png, image/jpeg, image/webp
+      responses:
+        '201':
+          description: アップロードした添付
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '400':
+          description: |
+            - `file_required`: `file` フィールドが無い、またはファイルでない
+            - `unsupported_media_type`: ファイルの Content-Type が PNG / JPEG / WebP 以外
+            - `image_too_large`: 幅か高さが 2048px を超える、または画像ヘッダーから寸法を読めない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                fileRequired:
+                  value: { error: file_required }
+                unsupportedMediaType:
+                  value: { error: unsupported_media_type }
+                imageTooLarge:
+                  value: { error: image_too_large }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: ファイルが 500 KiB を超える
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: payload_too_large }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/attachments/{fileId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: fileId
+        in: path
+        required: true
+        description: 添付 ID（`Attachment.id`）
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getAttachment
+      summary: 画像添付を取得する
+      description: |
+        `Attachment.url` が指す画像を返す。プロジェクトのメンバー（全ロール）のみ取得できる。
+        URL ごとに内容が不変なので `Cache-Control: private, max-age=31536000, immutable` を付ける。
+      tags: [files]
+      responses:
+        '200':
+          description: 画像本体。Content-Type はアップロード時のもの。
+          headers:
+            ETag:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                const: private, max-age=31536000, immutable
+            X-Content-Type-Options:
+              schema:
+                type: string
+                const: nosniff
+          content:
+            image/png:
+              schema:
+                type: string
+                contentMediaType: image/png
+            image/jpeg:
+              schema:
+                type: string
+                contentMediaType: image/jpeg
+            image/webp:
+              schema:
+                type: string
+                contentMediaType: image/webp
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または添付がこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -649,7 +825,7 @@ paths:
     delete:
       operationId: removeMember
       summary: メンバーを外す
-      description: '`admin` のみ。オーナーと自分自身は外せない。対象ユーザーが担当していた TODO は担当者なしになる。'
+      description: '`admin` のみ。オーナーと自分自身は外せない。対象ユーザーが担当していたタスクは担当者なしになる。'
       tags: [members]
       responses:
         '204':
@@ -887,7 +1063,7 @@ paths:
       summary: 退会する
       description: |
         自分以外のメンバーがいるオーナープロジェクトがあると退会できない（409。先にオーナーを移すかメンバーを外す）。
-        退会すると、自分だけのオーナープロジェクトを削除し、全プロジェクトのメンバーから外れ、担当 TODO を担当者なしにし、
+        退会すると、自分だけのオーナープロジェクトを削除し、全プロジェクトのメンバーから外れ、担当タスクを担当者なしにし、
         アバターを削除する。ユーザー行は削除せず匿名化する（表示名は `退会したユーザー`）。現在のセッションを破棄し `session_id` Cookie を削除する。
       tags: [me]
       responses:
@@ -1069,7 +1245,14 @@ components:
       name: taskId
       in: path
       required: true
-      description: TODO の ID
+      description: タスクの ID
+      schema:
+        type: string
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      description: コメント ID
       schema:
         type: string
     MemberUserId:
@@ -1153,7 +1336,7 @@ components:
     TaskColor:
       type: string
       enum: [red, orange, yellow, green, teal, blue, purple, gray]
-      description: TODO の表示色。既定は gray
+      description: タスクの表示色。既定は gray
     CalendarDate:
       type: string
       format: date
@@ -1276,6 +1459,7 @@ components:
           projectId,
           title,
           description,
+          descriptionEditedAt,
           status,
           assignee,
           startDate,
@@ -1295,7 +1479,12 @@ components:
         title:
           type: string
         description:
-          type: string
+          $ref: '#/components/schemas/RichTextDoc'
+        descriptionEditedAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・色の変更では更新されない。未編集なら `null`
         status:
           $ref: '#/components/schemas/TaskStatus'
         assignee:
@@ -1327,7 +1516,7 @@ components:
           $ref: '#/components/schemas/Timestamp'
     TaskComment:
       type: object
-      required: [id, taskId, author, body, createdAt]
+      required: [id, taskId, author, body, createdAt, editedAt]
       properties:
         id:
           type: string
@@ -1337,7 +1526,90 @@ components:
         author:
           $ref: '#/components/schemas/UserSummary'
         body:
+          $ref: '#/components/schemas/RichTextDoc'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        editedAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: 投稿後に編集した最終日時。未編集なら `null`
+    RichTextMark:
+      type: object
+      required: [type]
+      properties:
+        type:
           type: string
+        attrs:
+          type: object
+          additionalProperties: true
+    RichTextNode:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        attrs:
+          type: object
+          additionalProperties: true
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/RichTextNode'
+        marks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RichTextMark'
+        text:
+          type: string
+    RichTextDoc:
+      type: object
+      description: |
+        Tiptap（ProseMirror）の JSON ドキュメント。サーバーで以下のホワイトリスト検証を行い、違反は `400 validation_error` になる。
+        - ノード: `doc` / `paragraph` / `heading`（`attrs.level` は 1〜3） / `bulletList` / `orderedList`（`attrs.start` は任意の数値） /
+          `listItem` / `blockquote` / `codeBlock` / `hardBreak` / `image`（`attrs.src` 必須、`attrs.alt` 任意） / `text`（`text` は空でない文字列）
+        - マーク: `bold` / `italic` / `strike` / `code` / `link`（`attrs.href` 必須、`http://` か `https://` で始まる。`target` / `rel` は保存時に落とす）
+        - 子ノードは StarterKit の既定スキーマに従う（`doc` / `blockquote` / `listItem` の子はブロック、リストの子は `listItem`、
+          `paragraph` / `heading` の子は `text` / `hardBreak` / `image`、`codeBlock` の子はマークなしの `text` のみ）
+        - 未知のノード・マーク・トップレベルのキーは拒否する。未知の attrs と値が `null` の attrs は保存時に落とす。ネストの深さは 20 まで
+        - `JSON.stringify` した UTF-8 バイト長が 64 KiB（65536 バイト）以下
+        - `image` の `attrs.src` は同一プロジェクトの添付 URL（`/api/projects/{projectId}/attachments/{id}`）のみ。`data:` URL や外部 URL は拒否する
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          enum: [doc]
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/RichTextNode'
+      examples:
+        - type: doc
+          content:
+            - type: paragraph
+              content:
+                - type: text
+                  text: 本文
+    Attachment:
+      type: object
+      required: [id, url, contentType, size, width, height, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          description: 画像のパス（`/api/projects/{projectId}/attachments/{id}`、API のオリジンからの相対パス）
+        contentType:
+          type: string
+          examples: [image/png]
+        size:
+          type: integer
+          description: バイト数
+        width:
+          type: integer
+        height:
+          type: integer
         createdAt:
           $ref: '#/components/schemas/Timestamp'
 
@@ -1376,9 +1648,9 @@ components:
           maxLength: 200
           description: 前後の空白を除去してから長さを検証・保存する
         description:
-          type: string
-          maxLength: 4000
-          description: 省略時は空文字
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 省略時は空のドキュメント（空段落 1 つ）
         assigneeId:
           type: [string, 'null']
           description: 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` または省略で担当者なし。
@@ -1404,8 +1676,9 @@ components:
           maxLength: 200
           description: 前後の空白を除去してから長さを検証・保存する
         description:
-          type: string
-          maxLength: 4000
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 本文を置き換える
         status:
           $ref: '#/components/schemas/TaskStatus'
         assigneeId:
@@ -1426,10 +1699,17 @@ components:
       required: [body]
       properties:
         body:
-          type: string
-          minLength: 1
-          maxLength: 4000
-          description: 前後の空白を除去してから長さを検証・保存する
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 空のドキュメント（空白以外の文字も画像も無い）は `400 validation_error`
+    UpdateCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 空のドキュメント（空白以外の文字も画像も無い）は `400 validation_error`
     UpdateMemberRoleRequest:
       type: object
       required: [role]
@@ -1476,6 +1756,14 @@ components:
           type: string
           contentMediaType: application/octet-stream
           description: PNG / JPEG / WebP、100 KiB（102400 バイト）以下、幅・高さとも 256px 以下
+    UploadAttachmentRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: PNG / JPEG / WebP、500 KiB（512000 バイト）以下、幅・高さとも 2048px 以下
 
     Error:
       type: object

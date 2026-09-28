@@ -4,3 +4,4 @@ export interface HealthCheckResponse {
 
 export { validateRedirectPath } from './validateRedirectPath';
 export * from './projects';
+export * from './rich-text';

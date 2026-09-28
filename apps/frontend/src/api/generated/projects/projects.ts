@@ -39,7 +39,9 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -185,7 +187,7 @@ export function useUpdateProject<TError = globalThis.Error, TContext extends Rec
   return useColadaMutation(getUpdateProjectMutationOptions(coladaOptions));
 }
 /**
- * オーナーのみ。メンバー・招待・TODO・コメントもカスケード削除される。
+ * オーナーのみ。メンバー・招待・タスク・コメントもカスケード削除される。
  * @summary プロジェクトを削除する
  */
 export const deleteProject = (

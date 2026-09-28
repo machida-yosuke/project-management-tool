@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AVATAR_SIZE, ImageDecodeError, resizeAvatar } from '../../src/lib/image';
+import {
+  AVATAR_SIZE,
+  AttachmentTooLargeError,
+  ImageDecodeError,
+  blobToDataUrl,
+  dataUrlToBlob,
+  resizeAttachment,
+  resizeAvatar,
+} from '../../src/lib/image';
 
 // happy-dom implements neither decoding nor drawing, so stub the browser APIs resizeAvatar uses.
-function stubCanvas(supportedTypes: string[]) {
+function stubCanvas(supportedTypes: string[], sizeFor: (quality: unknown) => number = () => 6) {
   const ctx = {
     drawImage: vi.fn(),
     fillRect: vi.fn(),
@@ -23,7 +31,7 @@ function stubCanvas(supportedTypes: string[]) {
     encoded.push({ type: type ?? '', quality, width: this.width, height: this.height });
     // Browsers fall back to PNG for types they cannot encode instead of failing.
     const outType = type && supportedTypes.includes(type) ? type : 'image/png';
-    callback(new Blob(['pixels'], { type: outType }));
+    callback(new Blob([new Uint8Array(sizeFor(quality))], { type: outType }));
   });
   return { ctx, encoded };
 }
@@ -113,5 +121,88 @@ describe('resizeAvatar', () => {
 
     await expect(resizeAvatar(source)).rejects.toThrow('draw failed');
     expect(bitmap.close).toHaveBeenCalled();
+  });
+});
+
+describe('resizeAttachment', () => {
+  const source = new Blob(['source'], { type: 'image/png' });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('scales the long side down to 1600px and encodes WebP at 0.8', async () => {
+    const { ctx, encoded } = stubCanvas(['image/webp']);
+    const { bitmap, create } = stubBitmap(3200, 1000);
+
+    const result = await resizeAttachment(source);
+
+    expect(create).toHaveBeenCalledWith(source, { imageOrientation: 'from-image' });
+    expect(ctx.drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 1600, 500);
+    expect(bitmap.close).toHaveBeenCalled();
+    expect(encoded).toEqual([{ type: 'image/webp', quality: 0.8, width: 1600, height: 500 }]);
+    expect(result.type).toBe('image/webp');
+  });
+
+  it('re-encodes a small image at its own size', async () => {
+    const { encoded } = stubCanvas(['image/webp']);
+    stubBitmap(300, 900);
+
+    await resizeAttachment(source);
+
+    expect(encoded.map((e) => [e.width, e.height])).toEqual([[300, 900]]);
+  });
+
+  it('falls back to JPEG on white and remembers it for lower qualities', async () => {
+    const { ctx, encoded } = stubCanvas(['image/jpeg'], (q) => (q === 0.8 ? 600_000 : 400_000));
+    stubBitmap(800, 600);
+
+    const result = await resizeAttachment(source);
+
+    expect(encoded.map((e) => [e.type, e.quality])).toEqual([
+      ['image/webp', 0.8],
+      ['image/jpeg', 0.8],
+      ['image/jpeg', 0.7],
+    ]);
+    expect(ctx.fillStyle).toBe('#fff');
+    expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 800, 600);
+    expect(result.type).toBe('image/jpeg');
+    expect(result.size).toBe(400_000);
+  });
+
+  it('lowers the quality down to 0.6 and then gives up', async () => {
+    const { encoded } = stubCanvas(['image/webp'], () => 512_001);
+    stubBitmap(1600, 1600);
+
+    await expect(resizeAttachment(source)).rejects.toBeInstanceOf(AttachmentTooLargeError);
+    expect(encoded.map((e) => e.quality)).toEqual([0.8, 0.7, 0.6]);
+  });
+
+  it('throws ImageDecodeError when the image cannot be decoded', async () => {
+    stubCanvas(['image/webp']);
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.reject(new Error('bad'))),
+    );
+
+    await expect(resizeAttachment(source)).rejects.toBeInstanceOf(ImageDecodeError);
+  });
+});
+
+describe('data URL conversion', () => {
+  it('round-trips a blob through a data URL', async () => {
+    const blob = new Blob([new Uint8Array([0, 1, 254, 255])], { type: 'image/webp' });
+
+    const url = await blobToDataUrl(blob);
+    expect(url).toBe('data:image/webp;base64,AAH+/w==');
+
+    const back = dataUrlToBlob(url);
+    expect(back.type).toBe('image/webp');
+    expect(new Uint8Array(await back.arrayBuffer())).toEqual(new Uint8Array([0, 1, 254, 255]));
+  });
+
+  it('rejects a malformed data URL', () => {
+    expect(() => dataUrlToBlob('https://example.com/a.png')).toThrow(ImageDecodeError);
   });
 });

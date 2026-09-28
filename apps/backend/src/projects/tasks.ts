@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/sqlite-core';
 import type { D1Database } from '@cloudflare/workers-types';
 import {
   DEFAULT_TASK_COLOR,
+  emptyRichTextDoc,
   type Task,
   type TaskColor,
   type TaskStatus,
@@ -13,6 +14,7 @@ import { tasks, users } from '../db/schema';
 import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 import { isMember } from './members';
+import { deserializeRichText, serializeRichText } from './rich-text';
 
 const assignee = alias(users, 'assignee');
 const creator = alias(users, 'creator');
@@ -55,7 +57,8 @@ function toTask(row: TaskRow): Task {
     id: row.task.id,
     projectId: row.task.projectId,
     title: row.task.title,
-    description: row.task.description,
+    description: deserializeRichText(row.task.description, row.task.projectId),
+    descriptionEditedAt: row.task.descriptionEditedAt?.toISOString() ?? null,
     status: row.task.status,
     assignee: row.assignee && toUserSummary(row.assignee),
     startDate: row.task.startDate,
@@ -122,7 +125,7 @@ function resolveDateRange(
 
 interface TaskInput {
   title?: string;
-  description?: string;
+  description?: unknown;
   assigneeId?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -136,6 +139,13 @@ export async function createTask(
   input: TaskInput & { title: string },
 ): Promise<Task> {
   const range = resolveDateRange({ startDate: null, endDate: null }, input);
+  // `null` is not coalesced: the contract only allows omitting the field, not nulling it.
+  const description = serializeRichText(
+    input.description === undefined ? emptyRichTextDoc() : input.description,
+    projectId,
+    'description',
+    { allowEmpty: true },
+  );
   await assertAssignable(db, projectId, input.assigneeId);
   const now = new Date();
   const id = crypto.randomUUID();
@@ -145,7 +155,8 @@ export async function createTask(
       id,
       projectId,
       title: input.title,
-      description: input.description ?? '',
+      description,
+      descriptionEditedAt: null,
       status: 'open',
       assigneeId: input.assigneeId ?? null,
       startDate: range.startDate,
@@ -166,18 +177,28 @@ export async function updateTask(
 ): Promise<Task> {
   const current = await getTask(db, projectId, taskId);
   const range = resolveDateRange(current, input);
+  const description =
+    input.description === undefined
+      ? undefined
+      : serializeRichText(input.description, projectId, 'description', { allowEmpty: true });
   await assertAssignable(db, projectId, input.assigneeId);
+  const now = new Date();
+  // Compared against the normalized current doc so re-saving unchanged or legacy plain text
+  // does not mark the description as edited.
+  const descriptionChanged =
+    description !== undefined && description !== JSON.stringify(current.description);
   await drizzle(db)
     .update(tasks)
     .set({
       title: input.title,
-      description: input.description,
+      description,
+      descriptionEditedAt: descriptionChanged ? now : undefined,
       status: input.status,
       assigneeId: input.assigneeId,
       startDate: range.startDate,
       endDate: range.endDate,
       color: input.color,
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(and(eq(tasks.id, taskId), eq(tasks.projectId, projectId)));
   return getTask(db, projectId, taskId);

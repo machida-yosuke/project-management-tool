@@ -39,7 +39,9 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
+ * - 画像添付のアップロード: `admin` / `staff`
+ * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -49,6 +51,7 @@
 export * from './acceptInvitationRequest';
 export * from './accountDeletionBlocked';
 export * from './accountDeletionBlockedProjectsItem';
+export * from './attachment';
 export * from './authUser';
 export * from './avatarUrl';
 export * from './calendarDate';
@@ -67,16 +70,24 @@ export * from './projectInvitation';
 export * from './projectMember';
 export * from './projectRole';
 export * from './rateLimitedResponse';
+export * from './richTextDoc';
+export * from './richTextDocType';
+export * from './richTextMark';
+export * from './richTextMarkAttrs';
+export * from './richTextNode';
+export * from './richTextNodeAttrs';
 export * from './task';
 export * from './taskColor';
 export * from './taskComment';
 export * from './taskStatus';
 export * from './timestamp';
 export * from './unauthorizedResponse';
+export * from './updateCommentRequest';
 export * from './updateMemberRoleRequest';
 export * from './updateMeRequest';
 export * from './updateProjectRequest';
 export * from './updateTaskRequest';
+export * from './uploadAttachmentRequest';
 export * from './uploadAvatarRequest';
 export * from './userSummary';
 export * from './validationError';

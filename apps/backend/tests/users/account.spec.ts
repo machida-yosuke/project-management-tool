@@ -19,6 +19,7 @@ import {
   createProjectAs,
   createUser,
   json,
+  richText,
   setupProject,
   type TestUser,
 } from '../projects/helpers';
@@ -224,7 +225,10 @@ describe('DELETE /api/me', () => {
     const task = await json<Task>(
       await api(staff, base, { method: 'POST', body: { title: 'T', assigneeId: staff.id } }),
     );
-    await api(staff, `${base}/${task.id}/comments`, { method: 'POST', body: { body: 'hi' } });
+    await api(staff, `${base}/${task.id}/comments`, {
+      method: 'POST',
+      body: { body: richText('hi') },
+    });
 
     expect((await api(staff, '/api/me', { method: 'DELETE' })).status).toBe(204);
 

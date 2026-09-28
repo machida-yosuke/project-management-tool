@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '@pm-tool/shared';
-import { api, json, setupProject } from './helpers';
+import { env } from 'cloudflare:workers';
+import { drizzle } from 'drizzle-orm/d1';
+import { emptyRichTextDoc, RICH_TEXT_MAX_BYTES } from '@pm-tool/shared';
+import { tasks } from '../../src/db/schema';
+import { api, json, richText, setupProject } from './helpers';
 
 describe('tasks routes', () => {
   it('creates, lists in creation order, updates, and archives tasks', async () => {
@@ -9,14 +13,15 @@ describe('tasks routes', () => {
 
     const first = await api(staff, base, {
       method: 'POST',
-      body: { title: ' First ', description: 'd' },
+      body: { title: ' First ', description: richText('d') },
     });
     expect(first.status).toBe(201);
     const firstTask = await json<Task>(first);
     expect(firstTask).toMatchObject({
       projectId: project.id,
       title: 'First',
-      description: 'd',
+      description: richText('d'),
+      descriptionEditedAt: null,
       status: 'open',
       assignee: null,
       startDate: null,
@@ -50,7 +55,8 @@ describe('tasks routes', () => {
     expect(await json<Task>(updated)).toMatchObject({
       status: 'done',
       title: 'First!',
-      description: 'd',
+      description: richText('d'),
+      descriptionEditedAt: null,
       assignee: { id: admin.id },
     });
 
@@ -151,7 +157,7 @@ describe('tasks routes', () => {
     for (const body of [
       { title: '' },
       { title: 'a'.repeat(201) },
-      { title: 'T', description: 'a'.repeat(4001) },
+      { title: 'T', description: 'plain text' },
     ]) {
       const res = await api(admin, base, { method: 'POST', body });
       expect(res.status).toBe(400);
@@ -237,7 +243,9 @@ describe('tasks routes', () => {
     });
 
     const comments = `${base}/${task.id}/comments`;
-    expect((await api(staff, comments, { method: 'POST', body: { body: 'hi' } })).status).toBe(201);
+    expect(
+      (await api(staff, comments, { method: 'POST', body: { body: richText('hi') } })).status,
+    ).toBe(201);
     const listed = await api(admin, comments);
     expect(listed.status).toBe(200);
     expect(await json<unknown[]>(listed)).toHaveLength(1);
@@ -340,5 +348,155 @@ describe('tasks routes', () => {
       expect(res.status).toBe(400);
       expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
     }
+  });
+
+  it('stores rich text descriptions and defaults to the empty document', async () => {
+    const { project, admin } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const plain = await json<Task>(
+      await api(admin, base, { method: 'POST', body: { title: 'T' } }),
+    );
+    expect(plain.description).toEqual(emptyRichTextDoc());
+
+    const description = {
+      type: 'doc',
+      content: [
+        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Spec' }] },
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'see',
+              marks: [{ type: 'link', attrs: { href: 'https://example.com', target: '_blank' } }],
+            },
+          ],
+        },
+        { type: 'codeBlock', attrs: { language: null }, content: [{ type: 'text', text: 'x' }] },
+      ],
+    };
+    const created = await api(admin, base, { method: 'POST', body: { title: 'T', description } });
+    expect(created.status).toBe(201);
+    const task = await json<Task>(created);
+    const normalized = {
+      type: 'doc',
+      content: [
+        description.content[0],
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'see',
+              marks: [{ type: 'link', attrs: { href: 'https://example.com' } }],
+            },
+          ],
+        },
+        { type: 'codeBlock', content: [{ type: 'text', text: 'x' }] },
+      ],
+    };
+    expect(task.description).toEqual(normalized);
+    const [listed] = (await json<Task[]>(await api(admin, base))).filter((t) => t.id === task.id);
+    expect(listed?.description).toEqual(normalized);
+
+    const updated = await api(admin, `${base}/${task.id}`, {
+      method: 'PATCH',
+      body: { description: richText('new') },
+    });
+    expect(updated.status).toBe(200);
+    expect((await json<Task>(updated)).description).toEqual(richText('new'));
+  });
+
+  it('rejects invalid rich text descriptions', async () => {
+    const { project, admin } = await setupProject();
+    const other = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const task = await json<Task>(await api(admin, base, { method: 'POST', body: { title: 'T' } }));
+    const attachmentId = crypto.randomUUID();
+    const image = (src: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'image', attrs: { src } }] }],
+    });
+
+    for (const description of [
+      { type: 'doc', content: [{ type: 'horizontalRule' }] },
+      image('data:image/png;base64,AAAA'),
+      image(`/api/projects/${other.project.id}/attachments/${attachmentId}`),
+      richText('あ'.repeat(Math.ceil(RICH_TEXT_MAX_BYTES / 3) + 1)),
+      null,
+    ]) {
+      for (const res of [
+        await api(admin, base, { method: 'POST', body: { title: 'T', description } }),
+        await api(admin, `${base}/${task.id}`, { method: 'PATCH', body: { description } }),
+      ]) {
+        expect(res.status).toBe(400);
+        expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
+      }
+    }
+
+    const ownImage = image(`/api/projects/${project.id}/attachments/${attachmentId}`);
+    const accepted = await api(admin, `${base}/${task.id}`, {
+      method: 'PATCH',
+      body: { description: ownImage },
+    });
+    expect(accepted.status).toBe(200);
+    expect((await json<Task>(accepted)).description).toEqual(ownImage);
+  });
+
+  it('marks the description as edited only when its content changes', async () => {
+    const { project, admin } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const task = await json<Task>(
+      await api(admin, base, { method: 'POST', body: { title: 'T', description: richText('a') } }),
+    );
+    expect(task.descriptionEditedAt).toBeNull();
+    const url = `${base}/${task.id}`;
+
+    for (const body of [
+      { status: 'done' },
+      { title: 'Renamed', color: 'red', startDate: '2026-10-01', endDate: '2026-10-02' },
+      { description: richText('a') },
+    ]) {
+      const res = await api(admin, url, { method: 'PATCH', body });
+      expect(res.status).toBe(200);
+      expect((await json<Task>(res)).descriptionEditedAt).toBeNull();
+    }
+
+    const edited = await json<Task>(
+      await api(admin, url, { method: 'PATCH', body: { description: richText('b') } }),
+    );
+    expect(edited.descriptionEditedAt).toEqual(new Date(edited.descriptionEditedAt!).toISOString());
+
+    const statusOnly = await json<Task>(
+      await api(admin, url, { method: 'PATCH', body: { status: 'open' } }),
+    );
+    expect(statusOnly.descriptionEditedAt).toBe(edited.descriptionEditedAt);
+  });
+
+  it('returns legacy plain text descriptions as paragraphs', async () => {
+    const { project, admin } = await setupProject();
+    const id = crypto.randomUUID();
+    const now = new Date();
+    await drizzle(env.DB).insert(tasks).values({
+      id,
+      projectId: project.id,
+      title: 'Legacy',
+      description: 'hello\nworld',
+      createdBy: admin.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const base = `/api/projects/${project.id}/tasks`;
+    const [legacy] = (await json<Task[]>(await api(admin, base))).filter((t) => t.id === id);
+    expect(legacy?.description).toEqual(richText('hello', 'world'));
+
+    const resaved = await api(admin, `${base}/${id}`, {
+      method: 'PATCH',
+      body: { description: richText('hello', 'world') },
+    });
+    expect(await json<Task>(resaved)).toMatchObject({
+      description: richText('hello', 'world'),
+      descriptionEditedAt: null,
+    });
   });
 });

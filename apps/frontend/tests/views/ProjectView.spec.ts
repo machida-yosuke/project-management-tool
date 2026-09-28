@@ -1,17 +1,24 @@
 import { flushPromises, type DOMWrapper } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
-import type { ProjectRole, Task, TaskComment } from '@pm-tool/shared';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  plainTextToRichTextDoc,
+  type ProjectRole,
+  type Task,
+  type TaskComment,
+} from '@pm-tool/shared';
 import ProjectView from '../../src/views/ProjectView.vue';
 import { alice, bob, json, makeMember, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
+import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
   return {
     id: 'c1',
     taskId: 't1',
     author: bob,
-    body: 'Looks good',
+    body: plainTextToRichTextDoc('Looks good'),
     createdAt: '2026-09-02T00:00:00.000Z',
+    editedAt: null,
     ...overrides,
   };
 }
@@ -35,6 +42,10 @@ function findButton(scope: Pick<DOMWrapper<Element>, 'findAll'>, text: string) {
 }
 
 describe('ProjectView', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('shows edit controls for staff', async () => {
     stubApi(baseRoutes('staff'));
 
@@ -95,13 +106,13 @@ describe('ProjectView', () => {
 
     const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
 
-    await wrapper.get('input[aria-label="TODO のタイトル"]').setValue('New task');
+    await wrapper.get('input[aria-label="タスクのタイトル"]').setValue('New task');
     await wrapper.get('[data-testid="create-task"]').trigger('submit');
     await flushPromises();
     expect(wrapper.findAll('[data-testid="task"]').map((t) => t.get('button.link').text())).toEqual(
       ['Write spec', 'New task'],
     );
-    expect(inputValue(wrapper.get('input[aria-label="TODO のタイトル"]'))).toBe('');
+    expect(inputValue(wrapper.get('input[aria-label="タスクのタイトル"]'))).toBe('');
 
     await wrapper.get('[data-testid="task"] input[type="checkbox"]').setValue(true);
     await flushPromises();
@@ -143,7 +154,7 @@ describe('ProjectView', () => {
       ['Second'],
     );
     expect(wrapper.get('[data-testid="thread"]').text()).toBe(
-      'TODO を選択するとスレッドが表示されます',
+      'タスクを選択するとスレッドが表示されます',
     );
   });
 
@@ -256,7 +267,11 @@ describe('ProjectView', () => {
       ...baseRoutes('admin'),
       'GET /api/projects/p1/tasks/t1/comments': () => json(comments),
       'POST /api/projects/p1/tasks/t1/comments': () => {
-        const posted = makeComment({ id: 'c2', author: alice, body: 'Thanks' });
+        const posted = makeComment({
+          id: 'c2',
+          author: alice,
+          body: plainTextToRichTextDoc('Thanks'),
+        });
         comments = [...comments, posted];
         return json(posted, 201);
       },
@@ -266,7 +281,7 @@ describe('ProjectView', () => {
     await wrapper.get('[data-testid="task"] button.link').trigger('click');
     await flushPromises();
 
-    await wrapper.get('textarea[aria-label="コメント"]').setValue('Thanks');
+    await typeInto(wrapper, 'コメント', 'Thanks');
     await wrapper.get('[data-testid="create-comment"]').trigger('submit');
     await flushPromises();
 
@@ -275,11 +290,11 @@ describe('ProjectView', () => {
       expect.stringContaining('Bob'),
       expect.stringContaining('Alice'),
     ]);
-    expect(inputValue(wrapper.get('textarea[aria-label="コメント"]'))).toBe('');
+    expect(editorFor(wrapper, 'コメント').isEmpty).toBe(true);
     const postCall = requests.mock.calls
       .map(([req]) => req)
       .find((req) => req.path.endsWith('/comments') && req.method === 'POST');
-    expect(postCall?.body).toEqual({ body: 'Thanks' });
+    expect(postCall?.body).toEqual({ body: plainTextToRichTextDoc('Thanks') });
   });
 
   it('ignores a stale comment response after another task was selected', async () => {
@@ -291,7 +306,7 @@ describe('ProjectView', () => {
       ...baseRoutes('admin', () => [makeTask(), makeTask({ id: 't2', title: 'Second' })]),
       'GET /api/projects/p1/tasks/t1/comments': () => first,
       'GET /api/projects/p1/tasks/t2/comments': json([
-        makeComment({ id: 'c-t2', taskId: 't2', body: 'Second thread' }),
+        makeComment({ id: 'c-t2', taskId: 't2', body: plainTextToRichTextDoc('Second thread') }),
       ]),
     });
 
@@ -301,7 +316,7 @@ describe('ProjectView', () => {
     await flushPromises();
     await secondTask?.trigger('click');
     await flushPromises();
-    resolveFirst(json([makeComment({ body: 'First thread' })]));
+    resolveFirst(json([makeComment({ body: plainTextToRichTextDoc('First thread') })]));
     await flushPromises();
 
     const thread = wrapper.get('[data-testid="thread"]');
@@ -324,6 +339,74 @@ describe('ProjectView', () => {
     const thread = wrapper.get('[data-testid="thread"]');
     expect(thread.get('[role="alert"]').text()).toBe('コメントの読み込みに失敗しました');
     expect(thread.text()).not.toContain('コメントはありません');
+  });
+
+  it('shows the task description and marks it as edited', async () => {
+    stubApi(
+      baseRoutes('substaff', () => [
+        makeTask({
+          description: plainTextToRichTextDoc('Spec body'),
+          descriptionEditedAt: '2026-09-05T00:00:00.000Z',
+        }),
+      ]),
+    );
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+
+    const thread = wrapper.get('[data-testid="thread"]');
+    expect(thread.get('[data-testid="description"]').text()).toBe('Spec body');
+    expect(thread.get('[data-testid="description-edited"]').text()).toBe('更新履歴あり');
+    expect(thread.findAll('button').map((b) => b.text())).not.toContain('本文を編集');
+  });
+
+  it('hides an empty description and the edited mark for an untouched task', async () => {
+    stubApi(baseRoutes('admin'));
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+
+    const thread = wrapper.get('[data-testid="thread"]');
+    expect(thread.find('[data-testid="description"]').exists()).toBe(false);
+    expect(thread.find('[data-testid="description-edited"]').exists()).toBe(false);
+  });
+
+  it('edits the task description with a PATCH of only the description', async () => {
+    let task = makeTask({ description: plainTextToRichTextDoc('Old body') });
+    const requests = stubApi({
+      ...baseRoutes('admin', () => [task]),
+      'PATCH /api/projects/p1/tasks/t1': (body) => {
+        task = makeTask({
+          ...task,
+          ...(body as Partial<Task>),
+          descriptionEditedAt: '2026-09-06T00:00:00.000Z',
+        });
+        return json(task);
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+    const thread = wrapper.get('[data-testid="thread"]');
+    await findButton(thread, '本文を編集').trigger('click');
+    await flushPromises();
+    expect(editorFor(thread, '本文').getText()).toBe('Old body');
+
+    await replaceContent(thread, '本文', 'New body');
+    await thread.get('.task-description form').trigger('submit');
+    await flushPromises();
+
+    const patches = requests.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.method === 'PATCH')
+      .map((req) => req.body);
+    expect(patches).toEqual([{ description: plainTextToRichTextDoc('New body') }]);
+    expect(thread.get('[data-testid="description"]').text()).toBe('New body');
+    expect(thread.find('[data-testid="description-edited"]').exists()).toBe(true);
+    expect(localStorage.getItem('draft:t1:description')).toBeNull();
   });
 
   it('shows an action error when the assignee is not a member', async () => {

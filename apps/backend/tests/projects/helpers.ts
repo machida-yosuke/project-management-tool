@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { SELF } from 'cloudflare:test';
-import type { Project, ProjectRole } from '@pm-tool/shared';
+import type { Project, ProjectRole, RichTextDoc } from '@pm-tool/shared';
 import { createSession } from '../../src/auth/session';
 import { upsertUserByEmail, type UserRecord } from '../../src/auth/users';
 
@@ -84,4 +84,11 @@ export async function setupProject(): Promise<ProjectFixture> {
   await addMember(admin, project.id, staff, 'staff');
   await addMember(admin, project.id, substaff, 'substaff');
   return { project, admin, staff, substaff, outsider };
+}
+
+export function richText(...lines: string[]): RichTextDoc {
+  return {
+    type: 'doc',
+    content: lines.map((line) => ({ type: 'paragraph', content: [{ type: 'text', text: line }] })),
+  };
 }

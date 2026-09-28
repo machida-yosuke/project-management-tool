@@ -4,10 +4,11 @@ import { z } from 'zod';
 import type { AuthEnv } from '../middleware/require-auth';
 import { onValidationError } from '../middleware/validation';
 import { EDITOR_ROLES, assertRole, requireMembership } from '../projects/authorize';
-import { createComment, listComments } from '../projects/comments';
+import { createComment, listComments, updateComment } from '../projects/comments';
 
 const taskParam = z.object({ projectId: z.string(), taskId: z.string() });
-const createSchema = z.object({ body: z.string().trim().min(1).max(4000) });
+const commentParam = z.object({ projectId: z.string(), taskId: z.string(), commentId: z.string() });
+const bodySchema = z.object({ body: z.unknown() });
 
 export const commentsRoute = new Hono<AuthEnv>()
   .get('/', zValidator('param', taskParam, onValidationError), async (c) => {
@@ -18,7 +19,7 @@ export const commentsRoute = new Hono<AuthEnv>()
   .post(
     '/',
     zValidator('param', taskParam, onValidationError),
-    zValidator('json', createSchema, onValidationError),
+    zValidator('json', bodySchema, onValidationError),
     async (c) => {
       const { projectId, taskId } = c.req.valid('param');
       const userId = c.get('user').id;
@@ -32,5 +33,25 @@ export const commentsRoute = new Hono<AuthEnv>()
         c.req.valid('json').body,
       );
       return c.json(comment, 201);
+    },
+  )
+  .patch(
+    '/:commentId',
+    zValidator('param', commentParam, onValidationError),
+    zValidator('json', bodySchema, onValidationError),
+    async (c) => {
+      const { projectId, taskId, commentId } = c.req.valid('param');
+      const userId = c.get('user').id;
+      const membership = await requireMembership(c.env.DB, projectId, userId);
+      assertRole(membership, EDITOR_ROLES);
+      const comment = await updateComment(
+        c.env.DB,
+        projectId,
+        taskId,
+        commentId,
+        userId,
+        c.req.valid('json').body,
+      );
+      return c.json(comment);
     },
   );

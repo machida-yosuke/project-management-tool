@@ -71,7 +71,9 @@ export const tasks = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
+    // Rich text docs are stored as JSON; rows written before that hold plain text.
     description: text('description').notNull().default(''),
+    descriptionEditedAt: integer('description_edited_at', { mode: 'timestamp_ms' }),
     status: text('status', { enum: TASK_STATUSES }).notNull().default('open'),
     assigneeId: text('assignee_id').references(() => users.id),
     // Calendar dates as 'YYYY-MM-DD' so lexical comparison matches chronological order.
@@ -100,6 +102,26 @@ export const taskComments = sqliteTable(
       .references(() => users.id),
     body: text('body').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    editedAt: integer('edited_at', { mode: 'timestamp_ms' }),
   },
   (t) => [index('task_comments_task_id_idx').on(t.taskId)],
+);
+
+export const taskAttachments = sqliteTable(
+  'task_attachments',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    uploadedBy: text('uploaded_by')
+      .notNull()
+      .references(() => users.id),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('task_attachments_project_id_idx').on(t.projectId)],
 );
