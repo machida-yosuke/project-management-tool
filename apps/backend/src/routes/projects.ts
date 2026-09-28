@@ -13,7 +13,7 @@ import {
 } from '../projects/projects';
 
 const name = z.string().trim().min(1).max(200);
-const description = z.string().max(4000);
+const description = z.unknown();
 
 const createSchema = z.object({ name, description: description.optional() });
 const updateSchema = z.object({ name: name.optional(), description: description.optional() });

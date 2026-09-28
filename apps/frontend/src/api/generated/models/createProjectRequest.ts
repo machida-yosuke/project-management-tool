@@ -47,6 +47,7 @@
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { RichTextDoc } from './richTextDoc';
 
 export interface CreateProjectRequest {
   /**
@@ -55,9 +56,6 @@ export interface CreateProjectRequest {
      * @maxLength 200
      */
   name: string;
-  /**
-     * 省略時は空文字
-     * @maxLength 4000
-     */
-  description?: string;
+  /** 省略時は空のドキュメント（空段落 1 つ） */
+  description?: RichTextDoc;
 }

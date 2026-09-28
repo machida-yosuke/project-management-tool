@@ -3,6 +3,7 @@ import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import ProjectCalendarView from '../views/ProjectCalendarView.vue';
 import ProjectMembersView from '../views/ProjectMembersView.vue';
+import ProjectSettingsView from '../views/ProjectSettingsView.vue';
 import ProjectView from '../views/ProjectView.vue';
 import SettingsView from '../views/SettingsView.vue';
 import { requireAuthGuard } from './guards';
@@ -28,6 +29,12 @@ export const router = createRouter({
       path: '/projects/:projectId/calendar',
       name: 'project-calendar',
       component: ProjectCalendarView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/settings',
+      name: 'project-settings',
+      component: ProjectSettingsView,
       meta: { requiresAuth: true },
     },
     { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },

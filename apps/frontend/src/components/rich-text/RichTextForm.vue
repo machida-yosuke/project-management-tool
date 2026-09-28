@@ -16,9 +16,10 @@ const props = withDefaults(
     submit: (doc: RichTextDoc) => Promise<unknown>;
     placeholder?: string;
     cancelable?: boolean;
+    allowEmpty?: boolean;
     errorMessages?: Partial<Record<string, string>>;
   }>(),
-  { placeholder: undefined, cancelable: false, errorMessages: () => ({}) },
+  { placeholder: undefined, cancelable: false, allowEmpty: false, errorMessages: () => ({}) },
 );
 
 const emit = defineEmits<{ submitted: []; cancel: [] }>();
@@ -27,10 +28,10 @@ const emit = defineEmits<{ submitted: []; cancel: [] }>();
 const { doc, quotaExceeded, discard } = useDraft(props.draftKey, () => props.initialDoc);
 const error = ref('');
 const submitting = ref(false);
-const empty = computed(() => isRichTextDocEmpty(doc.value));
+const blocked = computed(() => !props.allowEmpty && isRichTextDocEmpty(doc.value));
 
 async function onSubmit() {
-  if (empty.value || submitting.value) return;
+  if (blocked.value || submitting.value) return;
   submitting.value = true;
   error.value = '';
   try {
@@ -62,13 +63,14 @@ function onCancel() {
 
 <template>
   <form class="rich-text-form" @submit.prevent="onSubmit">
+    <slot />
     <RichTextEditor v-model:doc="doc" :label="label" :placeholder="placeholder" />
     <p v-if="quotaExceeded" class="error" role="alert">
       下書きを保存できません。画像を減らしてください
     </p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <div class="actions">
-      <button type="submit" :disabled="empty || submitting">{{ submitLabel }}</button>
+      <button type="submit" :disabled="blocked || submitting">{{ submitLabel }}</button>
       <button v-if="cancelable" type="button" :disabled="submitting" @click="onCancel">取消</button>
     </div>
   </form>

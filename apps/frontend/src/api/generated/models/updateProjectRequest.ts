@@ -47,6 +47,7 @@
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { RichTextDoc } from './richTextDoc';
 
 /**
  * 全フィールド省略可。省略したフィールドは変更しない。
@@ -58,6 +59,6 @@ export interface UpdateProjectRequest {
      * @maxLength 200
      */
   name?: string;
-  /** @maxLength 4000 */
-  description?: string;
+  /** 概要を置き換える */
+  description?: RichTextDoc;
 }

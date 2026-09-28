@@ -1,6 +1,11 @@
 import { flushPromises } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import type { Project, ProjectInvitation } from '@pm-tool/shared';
+import {
+  emptyRichTextDoc,
+  plainTextToRichTextDoc,
+  type Project,
+  type ProjectInvitation,
+} from '@pm-tool/shared';
 import HomeView from '../../src/views/HomeView.vue';
 import { bob, json, makeInvitation, makeProject, stubApi } from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
@@ -50,9 +55,29 @@ describe('HomeView', () => {
     await flushPromises();
 
     const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
-    expect(post?.body).toEqual({ name: 'New project', description: '' });
+    expect(post?.body).toEqual({ name: 'New project', description: emptyRichTextDoc() });
     expect(wrapper.get('[data-testid="projects"]').text()).toContain('New project');
     expect(inputValue(wrapper.get('input[aria-label="プロジェクト名"]'))).toBe('');
+  });
+
+  it('sends the description as paragraphs per line', async () => {
+    const requests = stubApi({
+      'GET /api/projects': json([]),
+      'GET /api/invitations': json([]),
+      'POST /api/projects': json(makeProject({ id: 'p9' }), 201),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+    await wrapper.get('input[aria-label="プロジェクト名"]').setValue('New project');
+    await wrapper.get('textarea[aria-label="説明"]').setValue(' line 1\nline 2 ');
+    await wrapper.get('[data-testid="create-project"]').trigger('submit');
+    await flushPromises();
+
+    const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
+    expect(post?.body).toEqual({
+      name: 'New project',
+      description: plainTextToRichTextDoc('line 1\nline 2'),
+    });
   });
 
   it('accepts an invitation, adds the project and navigates to it', async () => {

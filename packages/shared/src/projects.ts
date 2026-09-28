@@ -29,7 +29,7 @@ export interface UserSummary {
 export interface Project {
   id: string;
   name: string;
-  description: string;
+  description: RichTextDoc;
   ownerId: string;
   role: ProjectRole;
   createdAt: string;

@@ -46,6 +46,10 @@ describe('draft storage', () => {
     expect(draftKeys.comment('t1', 'c1')).toBe('draft:t1:comment:c1');
   });
 
+  it('builds per-project keys', () => {
+    expect(draftKeys.newTask('p1')).toBe('draft:project:p1:new-task');
+  });
+
   it('saves, restores and clears a draft', () => {
     saveDraft('draft:t1:description', doc);
     expect(loadDraft('draft:t1:description')).toEqual(doc);

@@ -1,9 +1,10 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Project, ProjectRole } from '@pm-tool/shared';
+import { emptyRichTextDoc, type Project, type ProjectRole } from '@pm-tool/shared';
 import { projectMembers, projects } from '../db/schema';
 import { apiError } from './errors';
+import { deserializeRichText, serializeRichText } from './rich-text';
 
 type ProjectRow = typeof projects.$inferSelect;
 
@@ -11,7 +12,7 @@ function toProject(row: ProjectRow, role: ProjectRole): Project {
   return {
     id: row.id,
     name: row.name,
-    description: row.description,
+    description: deserializeRichText(row.description, row.id),
     ownerId: row.ownerId,
     role,
     createdAt: row.createdAt.toISOString(),
@@ -42,14 +43,22 @@ export async function getProject(
 export async function createProject(
   db: D1Database,
   ownerId: string,
-  input: { name: string; description?: string },
+  input: { name: string; description?: unknown },
 ): Promise<Project> {
   const orm = drizzle(db);
   const now = new Date();
+  const id = crypto.randomUUID();
+  // `null` is not coalesced: the contract only allows omitting the field, not nulling it.
+  const description = serializeRichText(
+    input.description === undefined ? emptyRichTextDoc() : input.description,
+    id,
+    'description',
+    { allowEmpty: true },
+  );
   const row: ProjectRow = {
-    id: crypto.randomUUID(),
+    id,
     name: input.name,
-    description: input.description ?? '',
+    description,
     ownerId,
     createdAt: now,
   };
@@ -66,12 +75,16 @@ export async function updateProject(
   db: D1Database,
   projectId: string,
   role: ProjectRole,
-  input: { name?: string; description?: string },
+  input: { name?: string; description?: unknown },
 ): Promise<Project> {
-  if (input.name !== undefined || input.description !== undefined) {
+  const description =
+    input.description === undefined
+      ? undefined
+      : serializeRichText(input.description, projectId, 'description', { allowEmpty: true });
+  if (input.name !== undefined || description !== undefined) {
     await drizzle(db)
       .update(projects)
-      .set({ name: input.name, description: input.description })
+      .set({ name: input.name, description })
       .where(eq(projects.id, projectId));
   }
   return getProject(db, projectId, role);

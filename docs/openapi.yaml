@@ -1397,7 +1397,7 @@ components:
         name:
           type: string
         description:
-          type: string
+          $ref: '#/components/schemas/RichTextDoc'
         ownerId:
           type: string
         role:
@@ -1623,9 +1623,9 @@ components:
           maxLength: 200
           description: 前後の空白を除去してから長さを検証・保存する
         description:
-          type: string
-          maxLength: 4000
-          description: 省略時は空文字
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 省略時は空のドキュメント（空段落 1 つ）
     UpdateProjectRequest:
       type: object
       description: 全フィールド省略可。省略したフィールドは変更しない。
@@ -1636,8 +1636,9 @@ components:
           maxLength: 200
           description: 前後の空白を除去してから長さを検証・保存する
         description:
-          type: string
-          maxLength: 4000
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 概要を置き換える
     CreateTaskRequest:
       type: object
       required: [title]

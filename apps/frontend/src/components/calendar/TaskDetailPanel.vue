@@ -4,6 +4,7 @@ import { TASK_COLORS, type TaskColor } from '@pm-tool/shared';
 import type { Task, TaskComment } from '../../api/generated/models';
 import CommentThread from '../CommentThread.vue';
 import TaskDescription from '../TaskDescription.vue';
+import TaskTitle from '../TaskTitle.vue';
 import UserAvatar from '../UserAvatar.vue';
 import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../../lib/task-colors';
 
@@ -22,8 +23,9 @@ const emit = defineEmits<{
   unarchive: [];
 }>();
 
+// Inner editors (e.g. TaskTitle) claim Escape with preventDefault to cancel only themselves.
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') emit('close');
+  if (event.key === 'Escape' && !event.defaultPrevented) emit('close');
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
@@ -37,7 +39,7 @@ function formatTimestamp(iso: string) {
 <template>
   <aside class="panel" data-testid="task-panel" :aria-label="`${task.title} の詳細`">
     <div class="panel-header">
-      <h3>{{ task.title }}</h3>
+      <TaskTitle :key="task.id" :task="task" :editable="editable" />
       <button type="button" aria-label="閉じる" @click="emit('close')">×</button>
     </div>
     <TaskDescription :key="task.id" :task="task" :editable="editable" />
@@ -107,8 +109,9 @@ function formatTimestamp(iso: string) {
   gap: 8px;
 }
 
-.panel-header h3 {
-  margin: 0;
+.panel-header > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .fields {

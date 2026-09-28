@@ -46,6 +46,40 @@ describe('ProjectView', () => {
     localStorage.clear();
   });
 
+  it.each([
+    ['staff', true],
+    ['substaff', false],
+  ] as const)('shows the settings link for %s: %s', async (role, visible) => {
+    stubApi(baseRoutes(role));
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+
+    const link = wrapper.findAll('header a').find((a) => a.text() === '設定');
+    expect(link?.attributes('href')).toBe(visible ? '/projects/p1/settings' : undefined);
+  });
+
+  it('shows the project description as rich text', async () => {
+    stubApi({
+      ...baseRoutes('staff'),
+      'GET /api/projects/p1': json(
+        makeProject({ role: 'staff', description: plainTextToRichTextDoc('Line 1\nLine 2') }),
+      ),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+
+    const paragraphs = wrapper.get('[data-testid="project-description"]').findAll('p');
+    expect(paragraphs.map((p) => p.text())).toEqual(['Line 1', 'Line 2']);
+  });
+
+  it('hides an empty project description', async () => {
+    stubApi(baseRoutes('staff'));
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+
+    expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+  });
+
   it('shows edit controls for staff', async () => {
     stubApi(baseRoutes('staff'));
 
@@ -89,6 +123,7 @@ describe('ProjectView', () => {
         tasks = [...tasks, created];
         return json(created, 201);
       },
+      'GET /api/projects/p1/tasks/t2/comments': json([]),
       'PATCH /api/projects/p1/tasks/t1': (body) => {
         const current = tasks[0] ?? makeTask();
         const patch = body as { status?: Task['status']; assigneeId?: string | null };
@@ -130,6 +165,101 @@ describe('ProjectView', () => {
       { status: 'done' },
       { assigneeId: null },
     ]);
+  });
+
+  it('creates a task with a description, then clears the form and selects it', async () => {
+    let tasks = [makeTask()];
+    const requests = stubApi({
+      ...baseRoutes('admin', () => tasks),
+      'POST /api/projects/p1/tasks': (body) => {
+        const request = body as Pick<Task, 'title' | 'description'>;
+        const created = makeTask({ id: 't2', ...request });
+        tasks = [...tasks, created];
+        return json(created, 201);
+      },
+      'GET /api/projects/p1/tasks/t2/comments': json([]),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const form = wrapper.get('[data-testid="create-task"]');
+    await form.get('input[aria-label="タスクのタイトル"]').setValue(' New task ');
+    await typeInto(form, 'タスクの本文', 'Task body');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(localStorage.getItem('draft:project:p1:new-task')).not.toBeNull();
+
+    await form.trigger('submit');
+    await flushPromises();
+
+    const posts = requests.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.method === 'POST')
+      .map((req) => req.body);
+    expect(posts).toEqual([
+      { title: 'New task', description: plainTextToRichTextDoc('Task body') },
+    ]);
+    expect(inputValue(form.get('input[aria-label="タスクのタイトル"]'))).toBe('');
+    expect(editorFor(form, 'タスクの本文').isEmpty).toBe(true);
+    expect(localStorage.getItem('draft:project:p1:new-task')).toBeNull();
+    expect(wrapper.get('[data-testid="task"].selected').get('button.link').text()).toBe('New task');
+    const thread = wrapper.get('[data-testid="thread"]');
+    expect(thread.get('h3').text()).toBe('New task');
+    expect(thread.get('[data-testid="description"]').text()).toBe('Task body');
+  });
+
+  it('restores the new task description draft', async () => {
+    localStorage.setItem(
+      'draft:project:p1:new-task',
+      JSON.stringify(plainTextToRichTextDoc('Saved draft')),
+    );
+    stubApi(baseRoutes('admin'));
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+
+    expect(editorFor(wrapper, 'タスクの本文').getText()).toBe('Saved draft');
+  });
+
+  it('shows a create error inside the form', async () => {
+    stubApi({
+      ...baseRoutes('admin'),
+      'POST /api/projects/p1/tasks': json({ error: 'validation_error' }, 400),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    const form = wrapper.get('[data-testid="create-task"]');
+    await form.get('input[aria-label="タスクのタイトル"]').setValue('x');
+    await form.trigger('submit');
+    await flushPromises();
+
+    expect(form.get('[role="alert"]').text()).toBe('タイトルは1〜200文字で入力してください');
+    expect(inputValue(form.get('input[aria-label="タスクのタイトル"]'))).toBe('x');
+  });
+
+  it('renames the selected task from the thread', async () => {
+    let task = makeTask();
+    const requests = stubApi({
+      ...baseRoutes('admin', () => [task]),
+      'PATCH /api/projects/p1/tasks/t1': (body) => {
+        task = makeTask({ ...task, ...(body as Partial<Task>) });
+        return json(task);
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('[data-testid="task"] button.link').trigger('click');
+    await flushPromises();
+    const thread = wrapper.get('[data-testid="thread"]');
+    await findButton(thread, 'タイトルを編集').trigger('click');
+    await thread.get('input[aria-label="タイトル"]').setValue('Renamed');
+    await thread.get('[data-testid="task-title-form"]').trigger('submit');
+    await flushPromises();
+
+    const patches = requests.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.method === 'PATCH')
+      .map((req) => req.body);
+    expect(patches).toEqual([{ title: 'Renamed' }]);
+    expect(thread.get('h3').text()).toBe('Renamed');
+    expect(wrapper.get('[data-testid="task"] button.link').text()).toBe('Renamed');
   });
 
   it('removes an archived task and closes its thread when it was selected', async () => {

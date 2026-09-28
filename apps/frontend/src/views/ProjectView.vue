@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { TASK_COLORS, canEdit } from '@pm-tool/shared';
+import {
+  TASK_COLORS,
+  canEdit,
+  emptyRichTextDoc,
+  isRichTextDocEmpty,
+  type RichTextDoc,
+} from '@pm-tool/shared';
 import {
   useArchiveTask,
   useCreateTask,
@@ -14,9 +20,13 @@ import {
 } from '../api/generated';
 import type { Task, UpdateTaskRequest } from '../api/generated/models';
 import CommentThread from '../components/CommentThread.vue';
+import RichTextContent from '../components/rich-text/RichTextContent.vue';
+import RichTextForm from '../components/rich-text/RichTextForm.vue';
 import TaskDescription from '../components/TaskDescription.vue';
+import TaskTitle from '../components/TaskTitle.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
+import { draftKeys } from '../lib/drafts';
 import { eventValue } from '../lib/form';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../lib/task-colors';
@@ -68,6 +78,7 @@ const newTitle = ref('');
 
 watch(projectId, () => {
   selectedTaskId.value = null;
+  newTitle.value = '';
 });
 
 function invalidateTasks() {
@@ -97,17 +108,18 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
   }
 }
 
-function createTask() {
-  return runAction(
-    async () => {
-      await createTaskMutation.mutateAsync({
-        projectId: projectId.value,
-        createTaskRequest: { title: newTitle.value.trim() },
-      });
-      newTitle.value = '';
+const CREATE_TASK_ERRORS = { validation_error: 'タイトルは1〜200文字で入力してください' };
+
+async function createTask(description: RichTextDoc) {
+  const created = await createTaskMutation.mutateAsync({
+    projectId: projectId.value,
+    createTaskRequest: {
+      title: newTitle.value.trim(),
+      ...(isRichTextDocEmpty(description) ? {} : { description }),
     },
-    { validation_error: 'タイトルは1〜200文字で入力してください' },
-  );
+  });
+  newTitle.value = '';
+  selectedTaskId.value = created.id;
 }
 
 function toggleDone(task: Task) {
@@ -196,18 +208,37 @@ function selectTask(task: Task) {
         <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
           カレンダー
         </router-link>
+        <router-link
+          v-if="editable"
+          :to="{ name: 'project-settings', params: { projectId: project.id } }"
+        >
+          設定
+        </router-link>
       </header>
-      <p v-if="project.description" class="muted">{{ project.description }}</p>
+      <RichTextContent
+        v-if="!isRichTextDocEmpty(project.description)"
+        class="muted"
+        data-testid="project-description"
+        :doc="project.description"
+      />
       <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
 
       <div class="columns">
         <section class="tasks">
           <h3>タスク</h3>
-          <form
+          <RichTextForm
             v-if="editable"
-            class="inline-form"
+            :key="projectId"
             data-testid="create-task"
-            @submit.prevent="createTask"
+            :project-id="projectId"
+            :draft-key="draftKeys.newTask(projectId)"
+            :initial-doc="emptyRichTextDoc()"
+            label="タスクの本文"
+            placeholder="本文（任意）"
+            submit-label="追加"
+            allow-empty
+            :error-messages="CREATE_TASK_ERRORS"
+            :submit="createTask"
           >
             <input
               v-model="newTitle"
@@ -217,8 +248,7 @@ function selectTask(task: Task) {
               maxlength="200"
               aria-label="タスクのタイトル"
             />
-            <button type="submit">追加</button>
-          </form>
+          </RichTextForm>
           <label>
             <input v-model="includeArchived" type="checkbox" aria-label="アーカイブ済みも表示" />
             アーカイブ済みも表示
@@ -316,7 +346,7 @@ function selectTask(task: Task) {
         <section class="thread" data-testid="thread">
           <!-- A <div>, not <template>: happy-dom returns null for form.nextSibling, which breaks fragment removal in tests. -->
           <div v-if="selectedTask">
-            <h3>{{ selectedTask.title }}</h3>
+            <TaskTitle :key="selectedTask.id" :task="selectedTask" :editable="editable" />
             <TaskDescription :key="selectedTask.id" :task="selectedTask" :editable="editable" />
             <CommentThread
               :key="selectedTask.id"
@@ -384,8 +414,7 @@ function selectTask(task: Task) {
 }
 
 .task-row,
-.task-meta,
-.inline-form {
+.task-meta {
   display: flex;
   align-items: center;
   gap: 8px;

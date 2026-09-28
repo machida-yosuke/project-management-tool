@@ -1,19 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import type { Project } from '@pm-tool/shared';
-import { addMember, api, createProjectAs, createUser, json, setupProject } from './helpers';
+import { env } from 'cloudflare:workers';
+import { drizzle } from 'drizzle-orm/d1';
+import { eq } from 'drizzle-orm';
+import { emptyRichTextDoc, type Project } from '@pm-tool/shared';
+import { projects } from '../../src/db/schema';
+import {
+  addMember,
+  api,
+  createProjectAs,
+  createUser,
+  json,
+  richText,
+  setupProject,
+} from './helpers';
 
 describe('projects routes', () => {
   it('creates a project with the creator as admin owner', async () => {
     const owner = await createUser('owner');
     const res = await api(owner, '/api/projects', {
       method: 'POST',
-      body: { name: '  My project  ', description: 'desc' },
+      body: { name: '  My project  ', description: richText('desc') },
     });
     expect(res.status).toBe(201);
     const project = await json<Project>(res);
     expect(project).toMatchObject({
       name: 'My project',
-      description: 'desc',
+      description: richText('desc'),
       ownerId: owner.id,
       role: 'admin',
     });
@@ -49,6 +61,39 @@ describe('projects routes', () => {
     expect(tooLong.status).toBe(400);
   });
 
+  it('defaults the description to an empty document', async () => {
+    const owner = await createUser('owner');
+    const project = await createProjectAs(owner);
+    expect(project.description).toEqual(emptyRichTextDoc());
+  });
+
+  it('rejects a description that is not a rich text document', async () => {
+    const { project, admin } = await setupProject();
+    const create = await api(admin, '/api/projects', {
+      method: 'POST',
+      body: { name: 'P', description: 'plain text' },
+    });
+    expect(create.status).toBe(400);
+    expect(await json<{ error: string }>(create)).toMatchObject({ error: 'validation_error' });
+
+    const patch = await api(admin, `/api/projects/${project.id}`, {
+      method: 'PATCH',
+      body: { description: { type: 'doc', content: [{ type: 'script' }] } },
+    });
+    expect(patch.status).toBe(400);
+    expect(await json<{ error: string }>(patch)).toMatchObject({ error: 'validation_error' });
+  });
+
+  it('returns legacy plain text descriptions as paragraphs', async () => {
+    const { project, admin } = await setupProject();
+    await drizzle(env.DB)
+      .update(projects)
+      .set({ description: 'hello\nworld' })
+      .where(eq(projects.id, project.id));
+    const res = await api(admin, `/api/projects/${project.id}`);
+    expect((await json<Project>(res)).description).toEqual(richText('hello', 'world'));
+  });
+
   it('returns 404 to non-members for every project endpoint', async () => {
     const { project, outsider } = await setupProject();
     const base = `/api/projects/${project.id}`;
@@ -68,8 +113,20 @@ describe('projects routes', () => {
     expect(byStaff.status).toBe(200);
     expect(await json<Project>(byStaff)).toMatchObject({ name: 'Renamed', role: 'staff' });
 
-    const byAdmin = await api(admin, base, { method: 'PATCH', body: { description: 'new' } });
-    expect(await json<Project>(byAdmin)).toMatchObject({ name: 'Renamed', description: 'new' });
+    const byAdmin = await api(admin, base, {
+      method: 'PATCH',
+      body: { description: richText('new') },
+    });
+    expect(await json<Project>(byAdmin)).toMatchObject({
+      name: 'Renamed',
+      description: richText('new'),
+    });
+
+    const cleared = await api(admin, base, {
+      method: 'PATCH',
+      body: { description: emptyRichTextDoc() },
+    });
+    expect(await json<Project>(cleared)).toMatchObject({ description: emptyRichTextDoc() });
 
     const bySubstaff = await api(substaff, base, { method: 'PATCH', body: { name: 'Nope' } });
     expect(bySubstaff.status).toBe(403);

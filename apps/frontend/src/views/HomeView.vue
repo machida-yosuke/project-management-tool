@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { plainTextToRichTextDoc } from '@pm-tool/shared';
 import {
   getListMyInvitationsQueryKey,
   getListProjectsQueryKey,
@@ -49,7 +50,7 @@ async function createProject() {
     await createProjectMutation({
       createProjectRequest: {
         name: newName.value.trim(),
-        description: newDescription.value.trim(),
+        description: plainTextToRichTextDoc(newDescription.value.trim()),
       },
     });
     newName.value = '';

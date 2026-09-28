@@ -48,12 +48,13 @@
  * OpenAPI spec version: 0.0.0
  */
 import type { ProjectRole } from './projectRole';
+import type { RichTextDoc } from './richTextDoc';
 import type { Timestamp } from './timestamp';
 
 export interface Project {
   id: string;
   name: string;
-  description: string;
+  description: RichTextDoc;
   ownerId: string;
   /** リクエストしたユーザー自身のロール */
   role: ProjectRole;

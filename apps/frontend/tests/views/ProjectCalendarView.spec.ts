@@ -240,6 +240,31 @@ describe('ProjectCalendarView', () => {
     expect(wrapper.get('[data-testid="task-panel"] h3').text()).toBe('Someday');
   });
 
+  it('cancels a title edit with Escape without closing the panel', async () => {
+    stubApi(baseRoutes());
+
+    // Attached so the keydown bubbles from the input up to the panel's window listener.
+    const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice, {
+      attachTo: document.body,
+    });
+    await openBand(wrapper, 't1');
+    const panel = wrapper.get('[data-testid="task-panel"]');
+    expect(panel.get('h3').text()).toBe('Design');
+    await findButton(panel, 'タイトルを編集').trigger('click');
+    const input = panel.get('input[aria-label="タイトル"]');
+    await input.setValue('Discarded');
+
+    input.element.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="task-panel"]').exists()).toBe(true);
+    expect(panel.find('input[aria-label="タイトル"]').exists()).toBe(false);
+    expect(panel.get('h3').text()).toBe('Design');
+    wrapper.unmount();
+  });
+
   it('closes the panel with the close button', async () => {
     stubApi(baseRoutes());
 
