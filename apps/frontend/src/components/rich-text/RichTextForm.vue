@@ -8,7 +8,7 @@ import RichTextEditor from './RichTextEditor.vue';
 
 const props = withDefaults(
   defineProps<{
-    projectId: string;
+    projectId: string | null;
     draftKey: string;
     initialDoc: RichTextDoc;
     label: string;
@@ -18,8 +18,15 @@ const props = withDefaults(
     cancelable?: boolean;
     allowEmpty?: boolean;
     errorMessages?: Partial<Record<string, string>>;
+    submitErrorFallback?: string;
   }>(),
-  { placeholder: undefined, cancelable: false, allowEmpty: false, errorMessages: () => ({}) },
+  {
+    placeholder: undefined,
+    cancelable: false,
+    allowEmpty: false,
+    errorMessages: () => ({}),
+    submitErrorFallback: '保存に失敗しました',
+  },
 );
 
 const emit = defineEmits<{ submitted: []; cancel: [] }>();
@@ -44,7 +51,7 @@ async function onSubmit() {
     try {
       await props.submit(prepared.doc);
     } catch (e) {
-      error.value = errorMessage(e, props.errorMessages, '保存に失敗しました');
+      error.value = errorMessage(e, props.errorMessages, props.submitErrorFallback);
       return;
     }
     discard();
@@ -64,7 +71,12 @@ function onCancel() {
 <template>
   <form class="rich-text-form" @submit.prevent="onSubmit">
     <slot />
-    <RichTextEditor v-model:doc="doc" :label="label" :placeholder="placeholder" />
+    <RichTextEditor
+      v-model:doc="doc"
+      :label="label"
+      :placeholder="placeholder"
+      :allow-images="projectId !== null"
+    />
     <p v-if="quotaExceeded" class="error" role="alert">
       下書きを保存できません。画像を減らしてください
     </p>

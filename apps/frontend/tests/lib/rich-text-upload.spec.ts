@@ -127,6 +127,33 @@ describe('prepareRichTextDoc', () => {
     }
   });
 
+  it('rejects every image without uploading when there is no project', async () => {
+    const requests = stubApi({});
+
+    const results = await Promise.all([
+      prepareRichTextDoc(null, docWith(PNG_DATA_URL)),
+      prepareRichTextDoc(null, docWith(`/api/projects/p1/attachments/${ID_1}`)),
+    ]);
+
+    expect(requests).not.toHaveBeenCalled();
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.error).toEqual({ kind: 'invalid', reason: 'invalid_image_src' });
+    }
+  });
+
+  it('accepts an image-free doc when there is no project', async () => {
+    const doc: RichTextDoc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'plain' }] }],
+    };
+
+    const result = await prepareRichTextDoc(null, doc);
+
+    expect(result).toEqual({ ok: true, doc, draft: doc });
+  });
+
   it('escapes the project id in the allowed image pattern', async () => {
     stubApi({});
 

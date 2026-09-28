@@ -11,6 +11,7 @@ export class DraftQuotaError extends Error {
 }
 
 export const draftKeys = {
+  newProject: () => 'draft:project:new',
   projectDescription: (projectId: string) => `draft:project:${projectId}:description`,
   newTask: (projectId: string) => `draft:project:${projectId}:new-task`,
   description: (taskId: string) => `draft:${taskId}:description`,

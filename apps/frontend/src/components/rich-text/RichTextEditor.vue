@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { EditorContent, useEditor, type Editor } from '@tiptap/vue-3';
+import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import type { RichTextDoc } from '@pm-tool/shared';
 import { eventFile } from '../../lib/form';
@@ -16,7 +17,10 @@ import {
   jsonToRichTextDoc,
 } from '../../lib/rich-text-extensions';
 
-const props = defineProps<{ label: string; placeholder?: string }>();
+const props = withDefaults(
+  defineProps<{ label: string; placeholder?: string; allowImages?: boolean }>(),
+  { placeholder: undefined, allowImages: true },
+);
 const doc = defineModel<RichTextDoc>('doc', { required: true });
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -25,6 +29,15 @@ let lastEmitted: RichTextDoc | null = null;
 
 function imageFiles(list: FileList | null | undefined): File[] {
   return Array.from(list ?? []).filter((file) => file.type.startsWith('image/'));
+}
+
+function withoutImages(fragment: Fragment): Fragment {
+  const nodes: ProseMirrorNode[] = [];
+  fragment.forEach((node) => {
+    if (node.type.name === 'image') return;
+    nodes.push(node.isLeaf ? node : node.copy(withoutImages(node.content)));
+  });
+  return Fragment.fromArray(nodes);
 }
 
 const editor = useEditor({
@@ -37,9 +50,13 @@ const editor = useEditor({
       role: 'textbox',
       class: 'rich-text-input',
     },
+    transformPasted: (slice) =>
+      props.allowImages
+        ? slice
+        : new Slice(withoutImages(slice.content), slice.openStart, slice.openEnd),
     handlePaste: (_view, event) => {
       const files = imageFiles(event.clipboardData?.files);
-      if (files.length === 0) return false;
+      if (files.length === 0 || !props.allowImages) return false;
       event.preventDefault();
       void insertImages(files);
       return true;
@@ -48,6 +65,8 @@ const editor = useEditor({
       const files = moved ? [] : imageFiles(event.dataTransfer?.files);
       if (files.length === 0) return false;
       event.preventDefault();
+      // Swallow the drop so the browser does not navigate to the dropped file.
+      if (!props.allowImages) return true;
       void insertImages(files, dropPosition(view, event));
       return true;
     },
@@ -219,15 +238,17 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
       >
         リンク
       </button>
-      <button type="button" aria-label="画像を挿入" @click="fileInput?.click()">画像</button>
-      <input
-        ref="fileInput"
-        type="file"
-        accept="image/*"
-        class="file-input"
-        aria-label="挿入する画像"
-        @change="onFileChange"
-      />
+      <template v-if="allowImages">
+        <button type="button" aria-label="画像を挿入" @click="fileInput?.click()">画像</button>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/*"
+          class="file-input"
+          aria-label="挿入する画像"
+          @change="onFileChange"
+        />
+      </template>
     </div>
     <div class="surface">
       <p v-if="placeholder && editor?.isEmpty" class="placeholder" aria-hidden="true">
@@ -288,6 +309,13 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
   padding: 8px;
   color: #999;
   pointer-events: none;
+}
+
+/* EditorContent wraps the ProseMirror element in its own div, so both layers must stretch. */
+.surface :deep(> div) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
 
 .surface :deep(.rich-text-input) {

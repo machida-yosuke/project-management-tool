@@ -1,5 +1,5 @@
 import { flushPromises } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   emptyRichTextDoc,
   plainTextToRichTextDoc,
@@ -9,8 +9,13 @@ import {
 import HomeView from '../../src/views/HomeView.vue';
 import { bob, json, makeInvitation, makeProject, stubApi } from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
+import { editorFor, typeInto } from '../helpers/rich-text';
 
 describe('HomeView', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('lists projects and invitations addressed to the user', async () => {
     stubApi({
       'GET /api/projects': json([makeProject()]),
@@ -60,7 +65,7 @@ describe('HomeView', () => {
     expect(inputValue(wrapper.get('input[aria-label="プロジェクト名"]'))).toBe('');
   });
 
-  it('sends the description as paragraphs per line', async () => {
+  it('sends the rich text description and clears the form and draft', async () => {
     const requests = stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([]),
@@ -68,16 +73,51 @@ describe('HomeView', () => {
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
-    await wrapper.get('input[aria-label="プロジェクト名"]').setValue('New project');
-    await wrapper.get('textarea[aria-label="説明"]').setValue(' line 1\nline 2 ');
-    await wrapper.get('[data-testid="create-project"]').trigger('submit');
+    const form = wrapper.get('[data-testid="create-project"]');
+    expect(form.find('button[aria-label="画像を挿入"]').exists()).toBe(false);
+    await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
+    await typeInto(form, 'プロジェクトの説明', 'line 1');
+    editorFor(form, 'プロジェクトの説明').commands.splitBlock();
+    await typeInto(form, 'プロジェクトの説明', 'line 2');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(localStorage.getItem('draft:project:new')).not.toBeNull();
+
+    await form.trigger('submit');
     await flushPromises();
 
-    const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
-    expect(post?.body).toEqual({
+    const posts = requests.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.method === 'POST' && req.path.startsWith('/api/projects'));
+    expect(posts.map((req) => req.path)).toEqual(['/api/projects']);
+    expect(posts[0]?.body).toEqual({
       name: 'New project',
       description: plainTextToRichTextDoc('line 1\nline 2'),
     });
+    expect(inputValue(form.get('input[aria-label="プロジェクト名"]'))).toBe('');
+    expect(editorFor(form, 'プロジェクトの説明').isEmpty).toBe(true);
+    expect(localStorage.getItem('draft:project:new')).toBeNull();
+  });
+
+  it.each([
+    ['validation_error', 400, 'プロジェクト名は1〜200文字で入力してください'],
+    ['internal_error', 500, 'プロジェクトの作成に失敗しました'],
+  ])('shows an error in the form when creation fails with %s', async (code, status, message) => {
+    stubApi({
+      'GET /api/projects': json([]),
+      'GET /api/invitations': json([]),
+      'POST /api/projects': json({ error: code }, status),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+    const form = wrapper.get('[data-testid="create-project"]');
+    await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
+    await typeInto(form, 'プロジェクトの説明', 'keep me');
+    await form.trigger('submit');
+    await flushPromises();
+
+    expect(form.get('[role="alert"]').text()).toBe(message);
+    expect(inputValue(form.get('input[aria-label="プロジェクト名"]'))).toBe('New project');
+    expect(editorFor(form, 'プロジェクトの説明').getText()).toBe('keep me');
   });
 
   it('accepts an invitation, adds the project and navigates to it', async () => {

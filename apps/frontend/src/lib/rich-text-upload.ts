@@ -75,18 +75,23 @@ async function uploadNodes(
   return { nodes: result, error };
 }
 
+// Matches nothing: without a project there is nowhere to upload to or own attachments in.
+const NO_IMAGE_SRC = /(?!)/;
+
 export async function prepareRichTextDoc(
-  projectId: string,
+  projectId: string | null,
   doc: RichTextDoc,
 ): Promise<PrepareRichTextResult> {
   let draft = doc;
-  if (hasDataImage(doc.content)) {
+  if (projectId !== null && hasDataImage(doc.content)) {
     const uploaded = await uploadNodes(projectId, doc.content);
     draft = { type: 'doc', content: uploaded.nodes };
     if (uploaded.error !== null)
       return { ok: false, error: { kind: 'upload', cause: uploaded.error }, draft };
   }
-  const result = validateRichTextDoc(draft, { imageSrcPattern: attachmentSrcPattern(projectId) });
+  const result = validateRichTextDoc(draft, {
+    imageSrcPattern: projectId === null ? NO_IMAGE_SRC : attachmentSrcPattern(projectId),
+  });
   if (!result.ok) return { ok: false, error: { kind: 'invalid', reason: result.reason }, draft };
   return { ok: true, doc: result.doc, draft };
 }

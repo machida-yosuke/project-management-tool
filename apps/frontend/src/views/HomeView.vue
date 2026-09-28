@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { plainTextToRichTextDoc } from '@pm-tool/shared';
+import { emptyRichTextDoc, type RichTextDoc } from '@pm-tool/shared';
 import {
   getListMyInvitationsQueryKey,
   getListProjectsQueryKey,
@@ -11,7 +11,9 @@ import {
   useListProjects,
 } from '../api/generated';
 import UserAvatar from '../components/UserAvatar.vue';
+import RichTextForm from '../components/rich-text/RichTextForm.vue';
 import { errorMessage } from '../lib/api';
+import { draftKeys } from '../lib/drafts';
 import { useInvalidate } from '../lib/query';
 import { ROLE_LABELS } from '../lib/roles';
 
@@ -36,34 +38,17 @@ const { mutateAsync: acceptInvitationMutation } = useAcceptInvitation({
 });
 
 const newName = ref('');
-const newDescription = ref('');
-const createError = ref('');
-const creating = ref(false);
 const passcodes = reactive<Record<string, string>>({});
 const acceptErrors = reactive<Record<string, string>>({});
 const accepting = ref<string | null>(null);
 
-async function createProject() {
-  createError.value = '';
-  creating.value = true;
-  try {
-    await createProjectMutation({
-      createProjectRequest: {
-        name: newName.value.trim(),
-        description: plainTextToRichTextDoc(newDescription.value.trim()),
-      },
-    });
-    newName.value = '';
-    newDescription.value = '';
-  } catch (e) {
-    createError.value = errorMessage(
-      e,
-      { validation_error: 'プロジェクト名は1〜200文字で入力してください' },
-      'プロジェクトの作成に失敗しました',
-    );
-  } finally {
-    creating.value = false;
-  }
+const CREATE_PROJECT_ERRORS = { validation_error: 'プロジェクト名は1〜200文字で入力してください' };
+
+async function createProject(description: RichTextDoc) {
+  await createProjectMutation({
+    createProjectRequest: { name: newName.value.trim(), description },
+  });
+  newName.value = '';
 }
 
 async function acceptInvitation(invitationId: string) {
@@ -147,7 +132,20 @@ async function acceptInvitation(invitationId: string) {
 
     <section>
       <h2>プロジェクトを作成</h2>
-      <form class="stack-form" data-testid="create-project" @submit.prevent="createProject">
+      <RichTextForm
+        class="stack-form"
+        data-testid="create-project"
+        :project-id="null"
+        :draft-key="draftKeys.newProject()"
+        :initial-doc="emptyRichTextDoc()"
+        label="プロジェクトの説明"
+        placeholder="説明（任意）"
+        submit-label="作成"
+        allow-empty
+        :error-messages="CREATE_PROJECT_ERRORS"
+        submit-error-fallback="プロジェクトの作成に失敗しました"
+        :submit="createProject"
+      >
         <input
           v-model="newName"
           type="text"
@@ -156,15 +154,7 @@ async function acceptInvitation(invitationId: string) {
           maxlength="200"
           aria-label="プロジェクト名"
         />
-        <textarea
-          v-model="newDescription"
-          placeholder="説明（任意）"
-          maxlength="4000"
-          aria-label="説明"
-        />
-        <button type="submit" :disabled="creating">作成</button>
-      </form>
-      <p v-if="createError" class="error" role="alert">{{ createError }}</p>
+      </RichTextForm>
     </section>
   </div>
 </template>
