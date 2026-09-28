@@ -3,7 +3,7 @@ import type { Task } from '@pm-tool/shared';
 import { api, json, setupProject } from './helpers';
 
 describe('tasks routes', () => {
-  it('creates, lists in creation order, updates, and deletes tasks', async () => {
+  it('creates, lists in creation order, updates, and archives tasks', async () => {
     const { project, admin, staff, substaff } = await setupProject();
     const base = `/api/projects/${project.id}/tasks`;
 
@@ -19,6 +19,10 @@ describe('tasks routes', () => {
       description: 'd',
       status: 'open',
       assignee: null,
+      startDate: null,
+      endDate: null,
+      color: 'gray',
+      archivedAt: null,
       createdBy: { id: staff.id, email: staff.email, name: staff.name },
     });
 
@@ -56,7 +60,7 @@ describe('tasks routes', () => {
     expect(unassigned.assignee).toBeNull();
     expect(unassigned.status).toBe('done');
 
-    expect((await api(staff, `${base}/${second.id}`, { method: 'DELETE' })).status).toBe(204);
+    expect((await api(staff, `${base}/${second.id}/archive`, { method: 'POST' })).status).toBe(200);
     expect((await json<Task[]>(await api(admin, base))).map((t) => t.id)).toEqual([firstTask.id]);
   });
 
@@ -72,7 +76,11 @@ describe('tasks routes', () => {
       (await api(substaff, `${base}/${task.id}`, { method: 'PATCH', body: { status: 'done' } }))
         .status,
     ).toBe(403);
-    expect((await api(substaff, `${base}/${task.id}`, { method: 'DELETE' })).status).toBe(403);
+    for (const action of ['archive', 'unarchive']) {
+      expect((await api(substaff, `${base}/${task.id}/${action}`, { method: 'POST' })).status).toBe(
+        403,
+      );
+    }
   });
 
   it('returns 404 to non-members', async () => {
@@ -84,7 +92,11 @@ describe('tasks routes', () => {
     expect(
       (await api(outsider, `${base}/${task.id}`, { method: 'PATCH', body: { title: 'x' } })).status,
     ).toBe(404);
-    expect((await api(outsider, `${base}/${task.id}`, { method: 'DELETE' })).status).toBe(404);
+    for (const action of ['archive', 'unarchive']) {
+      expect((await api(outsider, `${base}/${task.id}/${action}`, { method: 'POST' })).status).toBe(
+        404,
+      );
+    }
   });
 
   it('rejects assignees who are not project members', async () => {
@@ -121,10 +133,16 @@ describe('tasks routes', () => {
       body: { title: 'hijack' },
     });
     expect(res.status).toBe(404);
-    expect(
-      (await api(b.admin, `/api/projects/${b.project.id}/tasks/${task.id}`, { method: 'DELETE' }))
-        .status,
-    ).toBe(404);
+    for (const action of ['archive', 'unarchive']) {
+      const archived = await api(
+        b.admin,
+        `/api/projects/${b.project.id}/tasks/${task.id}/${action}`,
+        {
+          method: 'POST',
+        },
+      );
+      expect(archived.status).toBe(404);
+    }
   });
 
   it('validates task input', async () => {
@@ -145,5 +163,182 @@ describe('tasks routes', () => {
       body: { status: 'closed' },
     });
     expect(bad.status).toBe(400);
+  });
+
+  it('archives and unarchives idempotently', async () => {
+    const { project, admin, staff } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const first = await json<Task>(
+      await api(admin, base, { method: 'POST', body: { title: 'A' } }),
+    );
+    const second = await json<Task>(
+      await api(admin, base, { method: 'POST', body: { title: 'B' } }),
+    );
+
+    const archivedRes = await api(staff, `${base}/${first.id}/archive`, { method: 'POST' });
+    expect(archivedRes.status).toBe(200);
+    const archived = await json<Task>(archivedRes);
+    expect(archived.archivedAt).toEqual(new Date(archived.archivedAt!).toISOString());
+
+    expect((await json<Task[]>(await api(admin, base))).map((t) => t.id)).toEqual([second.id]);
+    for (const flag of ['true', '1']) {
+      const listed = await json<Task[]>(await api(admin, `${base}?includeArchived=${flag}`));
+      expect(listed.map((t) => t.id)).toEqual([first.id, second.id]);
+    }
+    for (const flag of ['false', '0']) {
+      const listed = await json<Task[]>(await api(admin, `${base}?includeArchived=${flag}`));
+      expect(listed.map((t) => t.id)).toEqual([second.id]);
+    }
+
+    const again = await api(staff, `${base}/${first.id}/archive`, { method: 'POST' });
+    expect(again.status).toBe(200);
+    expect(await json<Task>(again)).toMatchObject({
+      archivedAt: archived.archivedAt,
+      updatedAt: archived.updatedAt,
+    });
+
+    const restoredRes = await api(staff, `${base}/${first.id}/unarchive`, { method: 'POST' });
+    expect(restoredRes.status).toBe(200);
+    const restored = await json<Task>(restoredRes);
+    expect(restored.archivedAt).toBeNull();
+
+    const restoredAgain = await api(staff, `${base}/${first.id}/unarchive`, { method: 'POST' });
+    expect(restoredAgain.status).toBe(200);
+    expect(await json<Task>(restoredAgain)).toMatchObject({
+      archivedAt: null,
+      updatedAt: restored.updatedAt,
+    });
+    expect((await json<Task[]>(await api(admin, base))).map((t) => t.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+
+    const bad = await api(admin, `${base}?includeArchived=yes`);
+    expect(bad.status).toBe(400);
+    expect(await json<{ error: string }>(bad)).toMatchObject({ error: 'validation_error' });
+  });
+
+  it('keeps archived tasks editable and commentable', async () => {
+    const { project, admin, staff } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const task = await json<Task>(await api(admin, base, { method: 'POST', body: { title: 'T' } }));
+    const archived = await json<Task>(
+      await api(admin, `${base}/${task.id}/archive`, { method: 'POST' }),
+    );
+
+    const patched = await api(staff, `${base}/${task.id}`, {
+      method: 'PATCH',
+      body: { title: 'Renamed' },
+    });
+    expect(patched.status).toBe(200);
+    expect(await json<Task>(patched)).toMatchObject({
+      title: 'Renamed',
+      archivedAt: archived.archivedAt,
+    });
+
+    const comments = `${base}/${task.id}/comments`;
+    expect((await api(staff, comments, { method: 'POST', body: { body: 'hi' } })).status).toBe(201);
+    const listed = await api(admin, comments);
+    expect(listed.status).toBe(200);
+    expect(await json<unknown[]>(listed)).toHaveLength(1);
+  });
+
+  it('stores dates and colors and enforces a complete, ordered range', async () => {
+    const { project, admin } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+
+    const created = await api(admin, base, {
+      method: 'POST',
+      body: { title: 'T', startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' },
+    });
+    expect(created.status).toBe(201);
+    const task = await json<Task>(created);
+    expect(task).toMatchObject({ startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' });
+    const url = `${base}/${task.id}`;
+
+    const moved = await api(admin, url, { method: 'PATCH', body: { startDate: '2026-10-02' } });
+    expect(moved.status).toBe(200);
+    expect(await json<Task>(moved)).toMatchObject({
+      startDate: '2026-10-02',
+      endDate: '2026-10-03',
+      color: 'teal',
+    });
+
+    const inverted = await api(admin, url, { method: 'PATCH', body: { endDate: '2026-10-01' } });
+    expect(inverted.status).toBe(400);
+    expect(await inverted.json()).toEqual({ error: 'invalid_date_range' });
+
+    const halfCleared = await api(admin, url, { method: 'PATCH', body: { startDate: null } });
+    expect(halfCleared.status).toBe(400);
+    expect(await halfCleared.json()).toEqual({ error: 'invalid_date_range' });
+
+    const cleared = await api(admin, url, {
+      method: 'PATCH',
+      body: { startDate: null, endDate: null },
+    });
+    expect(cleared.status).toBe(200);
+    expect(await json<Task>(cleared)).toMatchObject({ startDate: null, endDate: null });
+
+    const halfSet = await api(admin, url, { method: 'PATCH', body: { endDate: '2026-10-05' } });
+    expect(halfSet.status).toBe(400);
+    expect(await halfSet.json()).toEqual({ error: 'invalid_date_range' });
+
+    const sameDay = await api(admin, url, {
+      method: 'PATCH',
+      body: { startDate: '2026-10-05', endDate: '2026-10-05', color: 'red' },
+    });
+    expect(sameDay.status).toBe(200);
+    expect(await json<Task>(sameDay)).toMatchObject({
+      startDate: '2026-10-05',
+      endDate: '2026-10-05',
+      color: 'red',
+    });
+
+    for (const body of [
+      { title: 'T', startDate: '2026-10-01' },
+      { title: 'T', endDate: '2026-10-01' },
+      { title: 'T', startDate: '2026-10-01', endDate: null },
+      { title: 'T', startDate: '2026-10-03', endDate: '2026-10-01' },
+    ]) {
+      const res = await api(admin, base, { method: 'POST', body });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'invalid_date_range' });
+    }
+  });
+
+  it('rejects malformed dates and unknown colors', async () => {
+    const { project, admin } = await setupProject();
+    const base = `/api/projects/${project.id}/tasks`;
+    const task = await json<Task>(await api(admin, base, { method: 'POST', body: { title: 'T' } }));
+
+    for (const date of ['2026-02-30', '2026/10/01', '20261001', '2026-10-01T00:00:00Z', '']) {
+      const create = await api(admin, base, {
+        method: 'POST',
+        body: { title: 'T', startDate: date, endDate: '2026-12-31' },
+      });
+      expect(create.status).toBe(400);
+      expect(await json<{ error: string }>(create)).toMatchObject({ error: 'validation_error' });
+
+      const patch = await api(admin, `${base}/${task.id}`, {
+        method: 'PATCH',
+        body: { startDate: '2026-01-01', endDate: date },
+      });
+      expect(patch.status).toBe(400);
+      expect(await json<{ error: string }>(patch)).toMatchObject({ error: 'validation_error' });
+    }
+
+    const leapDay = await api(admin, base, {
+      method: 'POST',
+      body: { title: 'T', startDate: '2028-02-29', endDate: '2028-02-29' },
+    });
+    expect(leapDay.status).toBe(201);
+
+    for (const res of [
+      await api(admin, base, { method: 'POST', body: { title: 'T', color: 'pink' } }),
+      await api(admin, `${base}/${task.id}`, { method: 'PATCH', body: { color: 'pink' } }),
+    ]) {
+      expect(res.status).toBe(400);
+      expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
+    }
   });
 });

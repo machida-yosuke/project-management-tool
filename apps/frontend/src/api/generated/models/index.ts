@@ -39,7 +39,7 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/削除・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -51,6 +51,7 @@ export * from './accountDeletionBlocked';
 export * from './accountDeletionBlockedProjectsItem';
 export * from './authUser';
 export * from './avatarUrl';
+export * from './calendarDate';
 export * from './createCommentRequest';
 export * from './createInvitationRequest';
 export * from './createProjectRequest';
@@ -59,6 +60,7 @@ export * from './error';
 export * from './forbiddenOrIpBannedResponse';
 export * from './googleAuthParams';
 export * from './ipBannedResponse';
+export * from './listTasksParams';
 export * from './notFoundResponse';
 export * from './project';
 export * from './projectInvitation';
@@ -66,6 +68,7 @@ export * from './projectMember';
 export * from './projectRole';
 export * from './rateLimitedResponse';
 export * from './task';
+export * from './taskColor';
 export * from './taskComment';
 export * from './taskStatus';
 export * from './timestamp';

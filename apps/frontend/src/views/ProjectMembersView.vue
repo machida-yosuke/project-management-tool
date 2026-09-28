@@ -157,6 +157,9 @@ function formatDate(iso: string) {
         <router-link :to="{ name: 'project', params: { projectId: project.id } }">
           TODO に戻る
         </router-link>
+        <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
+          カレンダー
+        </router-link>
       </header>
       <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
 

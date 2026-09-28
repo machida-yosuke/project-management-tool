@@ -205,3 +205,4 @@ users 行は削除しない。`tasks.created_by` / `task_comments.user_id` / `pr
 - コメントの編集・削除、返信ネスト
 - タスクの並び替え、期限、ラベル
 - プロジェクトのアーカイブ
+- TODO の期限（開始日・終了日）とアーカイブは `2026-09-28-calendar-design.md` で扱う

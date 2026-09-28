@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, primaryKey, unique, index } from 'drizzle-orm/sqlite-core';
-import { PROJECT_ROLES, TASK_STATUSES } from '@pm-tool/shared';
+import { PROJECT_ROLES, TASK_COLORS, TASK_STATUSES } from '@pm-tool/shared';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -74,6 +74,11 @@ export const tasks = sqliteTable(
     description: text('description').notNull().default(''),
     status: text('status', { enum: TASK_STATUSES }).notNull().default('open'),
     assigneeId: text('assignee_id').references(() => users.id),
+    // Calendar dates as 'YYYY-MM-DD' so lexical comparison matches chronological order.
+    startDate: text('start_date'),
+    endDate: text('end_date'),
+    color: text('color', { enum: TASK_COLORS }).notNull().default('gray'),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     createdBy: text('created_by')
       .notNull()
       .references(() => users.id),

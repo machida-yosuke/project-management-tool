@@ -1,33 +1,38 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { canEdit } from '@pm-tool/shared';
+import { TASK_COLORS, canEdit } from '@pm-tool/shared';
 import {
   getListCommentsQueryKey,
-  getListTasksQueryKey,
+  useArchiveTask,
   useCreateComment,
   useCreateTask,
-  useDeleteTask,
   useGetProject,
   useListComments,
   useListMembers,
   useListTasks,
+  useUnarchiveTask,
   useUpdateTask,
 } from '../api/generated';
-import type { Task } from '../api/generated/models';
+import type { Task, UpdateTaskRequest } from '../api/generated/models';
 import UserAvatar from '../components/UserAvatar.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
-import { useInvalidate } from '../lib/query';
+import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../lib/task-colors';
 
 const route = useRoute();
 const invalidate = useInvalidate();
 
 const projectId = computed(() => String(route.params.projectId));
 const selectedTaskId = ref<string | null>(null);
+const includeArchived = ref(false);
 
 const projectQuery = useGetProject(projectId);
-const tasksQuery = useListTasks(projectId);
+// Omit the param when off so the default request stays `GET /tasks` with no query string.
+const tasksQuery = useListTasks(projectId, () => ({
+  includeArchived: includeArchived.value || undefined,
+}));
 const membersQuery = useListMembers(projectId);
 const commentsQuery = useListComments(
   projectId,
@@ -65,19 +70,22 @@ watch(projectId, () => {
 });
 
 function invalidateTasks() {
-  return invalidate(getListTasksQueryKey(projectId.value));
+  return invalidate(listTasksKeyPrefix(projectId.value));
 }
 
 const createTaskMutation = useCreateTask({ mutation: { onSuccess: invalidateTasks } });
 const updateTaskMutation = useUpdateTask({ mutation: { onSuccess: invalidateTasks } });
-const deleteTaskMutation = useDeleteTask({
+const archiveTaskMutation = useArchiveTask({
   mutation: {
     onSuccess: (_, vars) => {
-      if (selectedTaskId.value === vars.taskId) selectedTaskId.value = null;
+      if (!includeArchived.value && selectedTaskId.value === vars.taskId) {
+        selectedTaskId.value = null;
+      }
       return invalidateTasks();
     },
   },
 });
+const unarchiveTaskMutation = useUnarchiveTask({ mutation: { onSuccess: invalidateTasks } });
 const createCommentMutation = useCreateComment({
   mutation: {
     onSuccess: (_, vars) => invalidate(getListCommentsQueryKey(vars.projectId, vars.taskId)),
@@ -129,9 +137,49 @@ function assign(task: Task, event: Event) {
   );
 }
 
-function deleteTask(task: Task) {
+function changeDate(task: Task, field: 'startDate' | 'endDate', event: Event) {
+  const value = eventValue(event);
+  let range: Pick<UpdateTaskRequest, 'startDate' | 'endDate'>;
+  if (value === '') {
+    range = { startDate: null, endDate: null };
+  } else if (field === 'startDate') {
+    range = { startDate: value, endDate: task.endDate ?? value };
+  } else {
+    range = { startDate: task.startDate ?? value, endDate: value };
+  }
+  return runAction(
+    () =>
+      updateTaskMutation.mutateAsync({
+        projectId: projectId.value,
+        taskId: task.id,
+        updateTaskRequest: range,
+      }),
+    { invalid_date_range: '終了日は開始日以降にしてください' },
+  );
+}
+
+function changeColor(task: Task, event: Event) {
+  const value = eventValue(event);
+  const color = TASK_COLORS.find((c) => c === value);
+  if (!color) throw new Error(`Unknown task color: ${value}`);
   return runAction(() =>
-    deleteTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
+    updateTaskMutation.mutateAsync({
+      projectId: projectId.value,
+      taskId: task.id,
+      updateTaskRequest: { color },
+    }),
+  );
+}
+
+function archiveTask(task: Task) {
+  return runAction(() =>
+    archiveTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
+  );
+}
+
+function unarchiveTask(task: Task) {
+  return runAction(() =>
+    unarchiveTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
   );
 }
 
@@ -169,6 +217,9 @@ function formatDate(iso: string) {
         <router-link :to="{ name: 'project-members', params: { projectId: project.id } }">
           メンバー
         </router-link>
+        <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
+          カレンダー
+        </router-link>
       </header>
       <p v-if="project.description" class="muted">{{ project.description }}</p>
       <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
@@ -192,6 +243,10 @@ function formatDate(iso: string) {
             />
             <button type="submit">追加</button>
           </form>
+          <label>
+            <input v-model="includeArchived" type="checkbox" aria-label="アーカイブ済みも表示" />
+            アーカイブ済みも表示
+          </label>
           <p v-if="tasks.length === 0">TODO はありません</p>
           <ul class="task-list">
             <li
@@ -200,6 +255,7 @@ function formatDate(iso: string) {
               :class="{
                 selected: task.id === selectedTaskId,
                 done: task.status === 'done',
+                archived: task.archivedAt !== null,
               }"
               data-testid="task"
             >
@@ -212,10 +268,16 @@ function formatDate(iso: string) {
                   @change="toggleDone(task)"
                 />
                 <span v-else>{{ task.status === 'done' ? '完了' : '未完了' }}</span>
+                <span class="color-dot" :style="{ background: TASK_COLOR_HEX[task.color] }" />
                 <button type="button" class="link" @click="selectTask(task)">
                   {{ task.title }}
                 </button>
-                <button v-if="editable" type="button" @click="deleteTask(task)">削除</button>
+                <template v-if="editable">
+                  <button v-if="task.archivedAt === null" type="button" @click="archiveTask(task)">
+                    アーカイブ
+                  </button>
+                  <button v-else type="button" @click="unarchiveTask(task)">復元</button>
+                </template>
               </div>
               <div class="task-meta">
                 <UserAvatar
@@ -244,6 +306,32 @@ function formatDate(iso: string) {
                   :size="20"
                 />
                 <span class="muted">作成: {{ task.createdBy.name }}</span>
+              </div>
+              <div v-if="editable" class="task-meta">
+                <input
+                  type="date"
+                  aria-label="開始日"
+                  :value="task.startDate ?? ''"
+                  @change="changeDate(task, 'startDate', $event)"
+                />
+                〜
+                <input
+                  type="date"
+                  aria-label="終了日"
+                  :value="task.endDate ?? ''"
+                  @change="changeDate(task, 'endDate', $event)"
+                />
+                <select :value="task.color" aria-label="色" @change="changeColor(task, $event)">
+                  <option v-for="color in TASK_COLORS" :key="color" :value="color">
+                    {{ TASK_COLOR_LABELS[color] }}
+                  </option>
+                </select>
+              </div>
+              <div v-else class="task-meta">
+                <span v-if="task.startDate && task.endDate">
+                  期間: {{ task.startDate }} 〜 {{ task.endDate }}
+                </span>
+                <span>色: {{ TASK_COLOR_LABELS[task.color] }}</span>
               </div>
             </li>
           </ul>
@@ -334,6 +422,10 @@ function formatDate(iso: string) {
   background: #eef4ff;
 }
 
+.task-list > li.archived {
+  opacity: 0.5;
+}
+
 .task-list > li.done .link {
   text-decoration: line-through;
   color: #666;
@@ -351,6 +443,13 @@ function formatDate(iso: string) {
 .task-meta {
   margin-top: 4px;
   font-size: 0.9em;
+}
+
+.color-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 
 .link {

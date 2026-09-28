@@ -44,7 +44,16 @@ export function rejectAllRequests() {
 function describeRequest(config: InternalAxiosRequestConfig): RecordedRequest {
   const method = (config.method ?? 'get').toUpperCase();
   const url = config.url ?? '';
-  const path = url.startsWith(API_BASE) ? url.slice(API_BASE.length) : url;
+  const base = url.startsWith(API_BASE) ? url.slice(API_BASE.length) : url;
+  const query = new URLSearchParams();
+  const params: unknown = config.params;
+  if (typeof params === 'object' && params !== null) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) query.append(key, String(value));
+    }
+  }
+  const search = query.toString();
+  const path = search ? `${base}?${search}` : base;
   const raw: unknown = config.data;
   const body =
     typeof raw === 'string'
@@ -127,6 +136,10 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     description: '',
     status: 'open',
     assignee: null,
+    startDate: null,
+    endDate: null,
+    color: 'gray',
+    archivedAt: null,
     createdBy: alice,
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',

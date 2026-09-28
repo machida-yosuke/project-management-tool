@@ -39,12 +39,13 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/削除・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { TaskColor } from './taskColor';
 
 export interface CreateTaskRequest {
   /**
@@ -63,4 +64,16 @@ export interface CreateTaskRequest {
      * @nullable
      */
   assigneeId?: string | null;
+  /**
+     * 開始日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。
+     * @nullable
+     */
+  startDate?: string | null;
+  /**
+     * 終了日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。
+     * @nullable
+     */
+  endDate?: string | null;
+  /** 省略時は gray */
+  color?: TaskColor;
 }

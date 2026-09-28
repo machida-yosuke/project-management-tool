@@ -39,7 +39,7 @@
  * プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
  * メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
- * - 編集（プロジェクト更新・TODO 作成/更新/削除・コメント投稿）: `admin` / `staff`
+ * - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - メンバー・招待の管理: `admin`
  * - プロジェクト削除: オーナーのみ
  *
@@ -63,6 +63,7 @@ import type {
 
 import type {
   CreateTaskRequest,
+  ListTasksParams,
   Task,
   UpdateTaskRequest
 } from '../models';
@@ -74,31 +75,33 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   /**
- * 全ロールが閲覧できる。作成日時の昇順。
+ * 全ロールが閲覧できる。作成日時の昇順。既定ではアーカイブ済みを除く。
  * @summary TODO の一覧を取得する
  */
 export const listTasks = (
     projectId: string,
+    params?: ListTasksParams,
  options?: SecondParameter<typeof customInstance<Task[]>>,) => {
       return customInstance<Task[]>(
-      {url: `/api/projects/${projectId}/tasks`, method: 'GET'
+      {url: `/api/projects/${projectId}/tasks`, method: 'GET',
+        params
     },
       options);
     }
 
-export const getListTasksQueryKey = (projectId: Parameters<typeof listTasks>[0]) => ["get", "/api/projects/${projectId}/tasks", projectId ?? null] as const;
+export const getListTasksQueryKey = (projectId: Parameters<typeof listTasks>[0], params?: Parameters<typeof listTasks>[1]) => ["get", "/api/projects/${projectId}/tasks", projectId ?? null, params ?? null] as const;
 
-export function getListTasksQueryOptions<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listTasks>> | undefined = undefined>(projectId: Parameters<typeof listTasks>[0], coladaOptions?: { query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listTasks>[1]; }): DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial> {
+export function getListTasksQueryOptions<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listTasks>> | undefined = undefined>(projectId: Parameters<typeof listTasks>[0], params?: Parameters<typeof listTasks>[1], coladaOptions?: { query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listTasks>[2]; }): DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial> {
   const coladaRequest = listTasks;
   return {
-    key: getListTasksQueryKey(projectId),
+    key: getListTasksQueryKey(projectId, params),
     ...coladaOptions?.query,
-    query: ({ signal: coladaSignal }) => coladaRequest(projectId, { ...coladaOptions?.request, signal: coladaSignal }),
+    query: ({ signal: coladaSignal }) => coladaRequest(projectId, params, { ...coladaOptions?.request, signal: coladaSignal }),
   };
 }
 
-export function useListTasks<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listTasks>> | undefined = undefined>(projectId: MaybeRefOrGetter<Parameters<typeof listTasks>[0]>, coladaOptions?: MaybeRefOrGetter<{ query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listTasks>[1]; }>) {
-  return useColadaQuery(() => getListTasksQueryOptions(toColadaValue(projectId), toColadaValue(coladaOptions)));
+export function useListTasks<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listTasks>> | undefined = undefined>(projectId: MaybeRefOrGetter<Parameters<typeof listTasks>[0]>, params?: MaybeRefOrGetter<Parameters<typeof listTasks>[1]>, coladaOptions?: MaybeRefOrGetter<{ query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listTasks>[2]; }>) {
+  return useColadaQuery(() => getListTasksQueryOptions(toColadaValue(projectId), toColadaValue(params), toColadaValue(coladaOptions)));
 }
 /**
  * `admin` / `staff` のみ。`status` は `open` で作成される。
@@ -160,33 +163,61 @@ export function useUpdateTask<TError = globalThis.Error, TContext extends Record
   return useColadaMutation(getUpdateTaskMutationOptions(coladaOptions));
 }
 /**
- * `admin` / `staff` のみ。コメントもカスケード削除される。
- * @summary TODO を削除する
+ * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。
+ * @summary TODO をアーカイブする
  */
-export const deleteTask = (
+export const archiveTask = (
     projectId: string,
     taskId: string,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/projects/${projectId}/tasks/${taskId}`, method: 'DELETE'
+ options?: SecondParameter<typeof customInstance<Task>>,) => {
+      return customInstance<Task>(
+      {url: `/api/projects/${projectId}/tasks/${taskId}/archive`, method: 'POST'
     },
       options);
     }
 
-export type DeleteTaskMutationVariables = { projectId: Parameters<typeof deleteTask>[0]; taskId: Parameters<typeof deleteTask>[1] };
+export type ArchiveTaskMutationVariables = { projectId: Parameters<typeof archiveTask>[0]; taskId: Parameters<typeof archiveTask>[1] };
 
-export function getDeleteTaskMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, DeleteTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof deleteTask>[2]; }): UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, DeleteTaskMutationVariables, TError, TContext> {
-  const coladaRequest = deleteTask;
+export function getArchiveTaskMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof archiveTask>>, ArchiveTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof archiveTask>[2]; }): UseMutationOptions<Awaited<ReturnType<typeof archiveTask>>, ArchiveTaskMutationVariables, TError, TContext> {
+  const coladaRequest = archiveTask;
   return {
     ...coladaOptions?.mutation,
-    mutation: (coladaVariables: DeleteTaskMutationVariables) => coladaRequest(coladaVariables.projectId, coladaVariables.taskId, coladaOptions?.request),
+    mutation: (coladaVariables: ArchiveTaskMutationVariables) => coladaRequest(coladaVariables.projectId, coladaVariables.taskId, coladaOptions?.request),
   };
 }
 
-export function useDeleteTask<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, DeleteTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof deleteTask>[2]; }) {
-  return useColadaMutation(getDeleteTaskMutationOptions(coladaOptions));
+export function useArchiveTask<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof archiveTask>>, ArchiveTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof archiveTask>[2]; }) {
+  return useColadaMutation(getArchiveTaskMutationOptions(coladaOptions));
+}
+/**
+ * `admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。
+ * @summary TODO のアーカイブを解除する
+ */
+export const unarchiveTask = (
+    projectId: string,
+    taskId: string,
+ options?: SecondParameter<typeof customInstance<Task>>,) => {
+      return customInstance<Task>(
+      {url: `/api/projects/${projectId}/tasks/${taskId}/unarchive`, method: 'POST'
+    },
+      options);
+    }
+
+export type UnarchiveTaskMutationVariables = { projectId: Parameters<typeof unarchiveTask>[0]; taskId: Parameters<typeof unarchiveTask>[1] };
+
+export function getUnarchiveTaskMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, UnarchiveTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof unarchiveTask>[2]; }): UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, UnarchiveTaskMutationVariables, TError, TContext> {
+  const coladaRequest = unarchiveTask;
+  return {
+    ...coladaOptions?.mutation,
+    mutation: (coladaVariables: UnarchiveTaskMutationVariables) => coladaRequest(coladaVariables.projectId, coladaVariables.taskId, coladaOptions?.request),
+  };
+}
+
+export function useUnarchiveTask<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, UnarchiveTaskMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof unarchiveTask>[2]; }) {
+  return useColadaMutation(getUnarchiveTaskMutationOptions(coladaOptions));
 }
 export type ListTasksResult = NonNullable<Awaited<ReturnType<typeof listTasks>>>
 export type CreateTaskResult = NonNullable<Awaited<ReturnType<typeof createTask>>>
 export type UpdateTaskResult = NonNullable<Awaited<ReturnType<typeof updateTask>>>
-export type DeleteTaskResult = NonNullable<Awaited<ReturnType<typeof deleteTask>>>
+export type ArchiveTaskResult = NonNullable<Awaited<ReturnType<typeof archiveTask>>>
+export type UnarchiveTaskResult = NonNullable<Awaited<ReturnType<typeof unarchiveTask>>>

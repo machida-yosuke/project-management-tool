@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import type { Component } from 'vue';
 import HomeView from '../../src/views/HomeView.vue';
 import LoginView from '../../src/views/LoginView.vue';
+import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
 import ProjectView from '../../src/views/ProjectView.vue';
 import SettingsView from '../../src/views/SettingsView.vue';
@@ -29,6 +30,11 @@ export async function mountAt(component: Component, path: string, currentUser: U
         path: '/projects/:projectId/members',
         name: 'project-members',
         component: ProjectMembersView,
+      },
+      {
+        path: '/projects/:projectId/calendar',
+        name: 'project-calendar',
+        component: ProjectCalendarView,
       },
     ],
   });

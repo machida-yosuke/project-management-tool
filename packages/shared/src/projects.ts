@@ -4,6 +4,19 @@ export type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const TASK_STATUSES = ['open', 'done'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export const TASK_COLORS = [
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'teal',
+  'blue',
+  'purple',
+  'gray',
+] as const;
+export type TaskColor = (typeof TASK_COLORS)[number];
+export const DEFAULT_TASK_COLOR: TaskColor = 'gray';
+
 export interface UserSummary {
   id: string;
   email: string;
@@ -48,6 +61,10 @@ export interface Task {
   description: string;
   status: TaskStatus;
   assignee: UserSummary | null;
+  startDate: string | null;
+  endDate: string | null;
+  color: TaskColor;
+  archivedAt: string | null;
   createdBy: UserSummary;
   createdAt: string;
   updatedAt: string;

@@ -40,7 +40,7 @@ info:
     プロジェクト配下のルートは、まずプロジェクトのメンバーかを確認する。メンバーでなければプロジェクトの存在を隠すため `404 {"error":"not_found"}`、
     メンバーだがロールが足りなければ `403 {"error":"forbidden"}` を返す。
     - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
-    - 編集（プロジェクト更新・TODO 作成/更新/削除・コメント投稿）: `admin` / `staff`
+    - 編集（プロジェクト更新・TODO 作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
     - メンバー・招待の管理: `admin`
     - プロジェクト削除: オーナーのみ
 servers:
@@ -326,8 +326,15 @@ paths:
     get:
       operationId: listTasks
       summary: TODO の一覧を取得する
-      description: 全ロールが閲覧できる。作成日時の昇順。
+      description: 全ロールが閲覧できる。作成日時の昇順。既定ではアーカイブ済みを除く。
       tags: [tasks]
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          description: '`true` または `1` でアーカイブ済みの TODO も含める。省略時・`false`・`0` は未アーカイブのみ。それ以外の値は `validation_error`。'
+          schema:
+            type: boolean
       responses:
         '200':
           description: TODO 一覧
@@ -367,6 +374,7 @@ paths:
           description: |
             - `validation_error`: 入力が不正
             - `assignee_not_member`: `assigneeId` がプロジェクトのメンバーでない
+            - `invalid_date_range`: `startDate` / `endDate` の片方だけが指定された、または `startDate` が `endDate` より後
           content:
             application/json:
               schema:
@@ -376,6 +384,8 @@ paths:
               examples:
                 assigneeNotMember:
                   value: { error: assignee_not_member }
+                invalidDateRange:
+                  value: { error: invalid_date_range }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -411,6 +421,7 @@ paths:
           description: |
             - `validation_error`: 入力が不正
             - `assignee_not_member`: `assigneeId` がプロジェクトのメンバーでない
+            - `invalid_date_range`: `startDate` / `endDate` の片方だけが指定された、または `startDate` が `endDate` より後
           content:
             application/json:
               schema:
@@ -420,6 +431,8 @@ paths:
               examples:
                 assigneeNotMember:
                   value: { error: assignee_not_member }
+                invalidDateRange:
+                  value: { error: invalid_date_range }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -433,14 +446,53 @@ paths:
               example: { error: not_found }
         '429':
           $ref: '#/components/responses/RateLimited'
-    delete:
-      operationId: deleteTask
-      summary: TODO を削除する
-      description: '`admin` / `staff` のみ。コメントもカスケード削除される。'
+
+  /api/projects/{projectId}/tasks/{taskId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/TaskId'
+    post:
+      operationId: archiveTask
+      summary: TODO をアーカイブする
+      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。'
       tags: [tasks]
       responses:
-        '204':
-          description: 削除完了
+        '200':
+          description: 現在の TODO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、または TODO がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/tasks/{taskId}/unarchive:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/TaskId'
+    post:
+      operationId: unarchiveTask
+      summary: TODO のアーカイブを解除する
+      description: '`admin` / `staff` のみ。冪等で、既にその状態なら何も変えず現在の TODO を返す。アーカイブ済みでも PATCH・コメントは可能。'
+      tags: [tasks]
+      responses:
+        '200':
+          description: 現在の TODO
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1098,6 +1150,16 @@ components:
     TaskStatus:
       type: string
       enum: [open, done]
+    TaskColor:
+      type: string
+      enum: [red, orange, yellow, green, teal, blue, purple, gray]
+      description: TODO の表示色。既定は gray
+    CalendarDate:
+      type: string
+      format: date
+      pattern: '^\d{4}-\d{2}-\d{2}$'
+      description: 暦日（YYYY-MM-DD、タイムゾーンなし）
+      examples: ['2026-09-28']
     Timestamp:
       type: string
       format: date-time
@@ -1209,7 +1271,21 @@ components:
     Task:
       type: object
       required:
-        [id, projectId, title, description, status, assignee, createdBy, createdAt, updatedAt]
+        [
+          id,
+          projectId,
+          title,
+          description,
+          status,
+          assignee,
+          startDate,
+          endDate,
+          color,
+          archivedAt,
+          createdBy,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -1226,6 +1302,23 @@ components:
           oneOf:
             - $ref: '#/components/schemas/UserSummary'
             - type: 'null'
+        startDate:
+          oneOf:
+            - $ref: '#/components/schemas/CalendarDate'
+            - type: 'null'
+          description: 開始日。`endDate` と両方 `null` か両方あり
+        endDate:
+          oneOf:
+            - $ref: '#/components/schemas/CalendarDate'
+            - type: 'null'
+          description: 終了日。`startDate` と両方 `null` か両方あり
+        color:
+          $ref: '#/components/schemas/TaskColor'
+        archivedAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: アーカイブした日時。`null` なら未アーカイブ
         createdBy:
           $ref: '#/components/schemas/UserSummary'
         createdAt:
@@ -1289,6 +1382,18 @@ components:
         assigneeId:
           type: [string, 'null']
           description: 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` または省略で担当者なし。
+        startDate:
+          type: [string, 'null']
+          format: date
+          description: '開始日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
+        endDate:
+          type: [string, 'null']
+          format: date
+          description: '終了日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
+        color:
+          allOf:
+            - $ref: '#/components/schemas/TaskColor'
+          description: 省略時は gray
     UpdateTaskRequest:
       type: object
       description: 全フィールド省略可。省略したフィールドは変更しない。
@@ -1306,6 +1411,16 @@ components:
         assigneeId:
           type: [string, 'null']
           description: 担当者のユーザー ID（プロジェクトのメンバーであること）。`null` で担当を外す。
+        startDate:
+          type: [string, 'null']
+          format: date
+          description: '開始日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
+        endDate:
+          type: [string, 'null']
+          format: date
+          description: '終了日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
+        color:
+          $ref: '#/components/schemas/TaskColor'
     CreateCommentRequest:
       type: object
       required: [body]

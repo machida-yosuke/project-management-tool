@@ -22,6 +22,13 @@
       "when": 1790517441340,
       "tag": "0002_material_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790555832310,
+      "tag": "0003_gigantic_stingray",
+      "breakpoints": true
     }
   ]
 }

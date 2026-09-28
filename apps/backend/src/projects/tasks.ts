@@ -1,8 +1,14 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Task, TaskStatus, UserSummary } from '@pm-tool/shared';
+import {
+  DEFAULT_TASK_COLOR,
+  type Task,
+  type TaskColor,
+  type TaskStatus,
+  type UserSummary,
+} from '@pm-tool/shared';
 import { tasks, users } from '../db/schema';
 import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
@@ -52,15 +58,28 @@ function toTask(row: TaskRow): Task {
     description: row.task.description,
     status: row.task.status,
     assignee: row.assignee && toUserSummary(row.assignee),
+    startDate: row.task.startDate,
+    endDate: row.task.endDate,
+    color: row.task.color,
+    archivedAt: row.task.archivedAt?.toISOString() ?? null,
     createdBy: toUserSummary(row.createdBy),
     createdAt: row.task.createdAt.toISOString(),
     updatedAt: row.task.updatedAt.toISOString(),
   };
 }
 
-export async function listTasks(db: D1Database, projectId: string): Promise<Task[]> {
+export async function listTasks(
+  db: D1Database,
+  projectId: string,
+  options: { includeArchived: boolean },
+): Promise<Task[]> {
   const rows = await taskQuery(db)
-    .where(eq(tasks.projectId, projectId))
+    .where(
+      and(
+        eq(tasks.projectId, projectId),
+        options.includeArchived ? undefined : isNull(tasks.archivedAt),
+      ),
+    )
     .orderBy(asc(tasks.createdAt), asc(sql`${tasks}.rowid`));
   return rows.map(toTask);
 }
@@ -82,12 +101,41 @@ async function assertAssignable(
   }
 }
 
+interface DateRange {
+  startDate: string | null;
+  endDate: string | null;
+}
+
+// `undefined` keeps the stored value so a PATCH of one side is checked against the other.
+function resolveDateRange(
+  current: DateRange,
+  input: { startDate?: string | null; endDate?: string | null },
+): DateRange {
+  const startDate = input.startDate === undefined ? current.startDate : input.startDate;
+  const endDate = input.endDate === undefined ? current.endDate : input.endDate;
+  if ((startDate === null) !== (endDate === null)) throw apiError(400, 'invalid_date_range');
+  if (startDate !== null && endDate !== null && startDate > endDate) {
+    throw apiError(400, 'invalid_date_range');
+  }
+  return { startDate, endDate };
+}
+
+interface TaskInput {
+  title?: string;
+  description?: string;
+  assigneeId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  color?: TaskColor;
+}
+
 export async function createTask(
   db: D1Database,
   projectId: string,
   createdBy: string,
-  input: { title: string; description?: string; assigneeId?: string | null },
+  input: TaskInput & { title: string },
 ): Promise<Task> {
+  const range = resolveDateRange({ startDate: null, endDate: null }, input);
   await assertAssignable(db, projectId, input.assigneeId);
   const now = new Date();
   const id = crypto.randomUUID();
@@ -100,6 +148,9 @@ export async function createTask(
       description: input.description ?? '',
       status: 'open',
       assigneeId: input.assigneeId ?? null,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      color: input.color ?? DEFAULT_TASK_COLOR,
       createdBy,
       createdAt: now,
       updatedAt: now,
@@ -111,9 +162,10 @@ export async function updateTask(
   db: D1Database,
   projectId: string,
   taskId: string,
-  input: { title?: string; description?: string; status?: TaskStatus; assigneeId?: string | null },
+  input: TaskInput & { status?: TaskStatus },
 ): Promise<Task> {
-  await getTask(db, projectId, taskId);
+  const current = await getTask(db, projectId, taskId);
+  const range = resolveDateRange(current, input);
   await assertAssignable(db, projectId, input.assigneeId);
   await drizzle(db)
     .update(tasks)
@@ -122,16 +174,33 @@ export async function updateTask(
       description: input.description,
       status: input.status,
       assigneeId: input.assigneeId,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      color: input.color,
       updatedAt: new Date(),
     })
     .where(and(eq(tasks.id, taskId), eq(tasks.projectId, projectId)));
   return getTask(db, projectId, taskId);
 }
 
-export async function deleteTask(db: D1Database, projectId: string, taskId: string): Promise<void> {
-  const deleted = await drizzle(db)
-    .delete(tasks)
-    .where(and(eq(tasks.id, taskId), eq(tasks.projectId, projectId)))
-    .returning({ id: tasks.id });
-  if (deleted.length === 0) throw apiError(404, 'not_found');
+// Conditional on the current state so a repeated call leaves archivedAt and updatedAt untouched.
+export async function setTaskArchived(
+  db: D1Database,
+  projectId: string,
+  taskId: string,
+  archived: boolean,
+): Promise<Task> {
+  await getTask(db, projectId, taskId);
+  const now = new Date();
+  await drizzle(db)
+    .update(tasks)
+    .set({ archivedAt: archived ? now : null, updatedAt: now })
+    .where(
+      and(
+        eq(tasks.id, taskId),
+        eq(tasks.projectId, projectId),
+        archived ? isNull(tasks.archivedAt) : isNotNull(tasks.archivedAt),
+      ),
+    );
+  return getTask(db, projectId, taskId);
 }

@@ -1,17 +1,8 @@
-import { flushPromises } from '@vue/test-utils';
+import { flushPromises, type DOMWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { ProjectRole, Task, TaskComment } from '@pm-tool/shared';
 import ProjectView from '../../src/views/ProjectView.vue';
-import {
-  alice,
-  bob,
-  json,
-  makeMember,
-  makeProject,
-  makeTask,
-  noContent,
-  stubApi,
-} from '../helpers/api-mock';
+import { alice, bob, json, makeMember, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { inputValue, mountAt } from '../helpers/mount';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
@@ -37,6 +28,12 @@ function baseRoutes(role: ProjectRole, tasks: () => Task[] = () => [makeTask({ a
   };
 }
 
+function findButton(scope: Pick<DOMWrapper<Element>, 'findAll'>, text: string) {
+  const button = scope.findAll('button').find((b) => b.text() === text);
+  if (!button) throw new Error(`Button not found: ${text}`);
+  return button;
+}
+
 describe('ProjectView', () => {
   it('shows edit controls for staff', async () => {
     stubApi(baseRoutes('staff'));
@@ -50,7 +47,7 @@ describe('ProjectView', () => {
     expect(inputValue(select)).toBe(bob.id);
     expect(select.findAll('option').map((o) => o.text())).toEqual(['未割り当て', 'Alice', 'Bob']);
     expect(task.text()).toContain('作成: Alice');
-    expect(task.findAll('button').map((b) => b.text())).toContain('削除');
+    expect(task.findAll('button').map((b) => b.text())).toContain('アーカイブ');
   });
 
   it('hides every edit control for substaff and shows names as text', async () => {
@@ -62,7 +59,7 @@ describe('ProjectView', () => {
     const task = wrapper.get('[data-testid="task"]');
     expect(task.find('input[type="checkbox"]').exists()).toBe(false);
     expect(task.find('select').exists()).toBe(false);
-    expect(task.findAll('button').map((b) => b.text())).not.toContain('削除');
+    expect(task.findAll('button').map((b) => b.text())).not.toContain('アーカイブ');
     expect(task.text()).toContain('担当: Bob');
 
     await task.get('button.link').trigger('click');
@@ -124,13 +121,13 @@ describe('ProjectView', () => {
     ]);
   });
 
-  it('removes a deleted task and closes its thread when it was selected', async () => {
+  it('removes an archived task and closes its thread when it was selected', async () => {
     let tasks = [makeTask(), makeTask({ id: 't2', title: 'Second' })];
     stubApi({
       ...baseRoutes('admin', () => tasks),
-      'DELETE /api/projects/p1/tasks/t1': () => {
+      'POST /api/projects/p1/tasks/t1/archive': () => {
         tasks = tasks.filter((task) => task.id !== 't1');
-        return noContent();
+        return json(makeTask({ archivedAt: '2026-09-10T00:00:00.000Z' }));
       },
     });
 
@@ -139,11 +136,7 @@ describe('ProjectView', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="thread"]').text()).toContain('Looks good');
 
-    const deleteButton = wrapper
-      .get('[data-testid="task"]')
-      .findAll('button')
-      .find((b) => b.text() === '削除');
-    await deleteButton?.trigger('click');
+    await findButton(wrapper.get('[data-testid="task"]'), 'アーカイブ').trigger('click');
     await flushPromises();
 
     expect(wrapper.findAll('[data-testid="task"]').map((t) => t.get('button.link').text())).toEqual(
@@ -152,6 +145,109 @@ describe('ProjectView', () => {
     expect(wrapper.get('[data-testid="thread"]').text()).toBe(
       'TODO を選択するとスレッドが表示されます',
     );
+  });
+
+  it('lists archived tasks on demand and restores them', async () => {
+    const archived = makeTask({
+      id: 't2',
+      title: 'Old task',
+      archivedAt: '2026-09-10T00:00:00.000Z',
+    });
+    let all = [makeTask(), archived];
+    const requests = stubApi({
+      ...baseRoutes('admin'),
+      'GET /api/projects/p1/tasks?includeArchived=true': () => json(all),
+      'POST /api/projects/p1/tasks/t2/unarchive': () => {
+        const restored = makeTask({ ...archived, archivedAt: null });
+        all = [all[0] ?? makeTask(), restored];
+        return json(restored);
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    expect(wrapper.findAll('[data-testid="task"]')).toHaveLength(1);
+
+    await wrapper.get('input[aria-label="アーカイブ済みも表示"]').setValue(true);
+    await flushPromises();
+
+    const rendered = wrapper.findAll('[data-testid="task"]');
+    expect(rendered.map((t) => t.get('button.link').text())).toEqual(['Write spec', 'Old task']);
+    const archivedRow = rendered[1];
+    if (!archivedRow) throw new Error('archived row missing');
+    expect(archivedRow.classes()).toContain('archived');
+    expect(rendered[0]?.classes()).not.toContain('archived');
+
+    await findButton(archivedRow, '復元').trigger('click');
+    await flushPromises();
+
+    const restoredRow = wrapper.findAll('[data-testid="task"]')[1];
+    expect(restoredRow?.classes()).not.toContain('archived');
+    expect(restoredRow?.findAll('button').map((b) => b.text())).toContain('アーカイブ');
+    const calls = requests.mock.calls.map(([req]) => `${req.method} ${req.path}`);
+    expect(calls).toContain('GET /api/projects/p1/tasks?includeArchived=true');
+    expect(calls).toContain('POST /api/projects/p1/tasks/t2/unarchive');
+  });
+
+  it('sends the date range and color from the task row', async () => {
+    let task = makeTask();
+    const requests = stubApi({
+      ...baseRoutes('admin', () => [task]),
+      'PATCH /api/projects/p1/tasks/t1': (body) => {
+        task = makeTask({ ...task, ...(body as Partial<Task>) });
+        return json(task);
+      },
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+
+    await wrapper.get('input[aria-label="開始日"]').setValue('2026-10-01');
+    await flushPromises();
+    expect(inputValue(wrapper.get('input[aria-label="終了日"]'))).toBe('2026-10-01');
+
+    await wrapper.get('input[aria-label="終了日"]').setValue('');
+    await flushPromises();
+
+    await wrapper.get('select[aria-label="色"]').setValue('teal');
+    await flushPromises();
+    expect(inputValue(wrapper.get('select[aria-label="色"]'))).toBe('teal');
+
+    const patches = requests.mock.calls
+      .map(([req]) => req)
+      .filter((req) => req.method === 'PATCH')
+      .map((req) => req.body);
+    expect(patches).toEqual([
+      { startDate: '2026-10-01', endDate: '2026-10-01' },
+      { startDate: null, endDate: null },
+      { color: 'teal' },
+    ]);
+  });
+
+  it('shows the date range and color as text for substaff', async () => {
+    stubApi(
+      baseRoutes('substaff', () => [
+        makeTask({ startDate: '2026-10-01', endDate: '2026-10-03', color: 'teal' }),
+      ]),
+    );
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', bob);
+
+    const task = wrapper.get('[data-testid="task"]');
+    expect(task.find('input[type="date"]').exists()).toBe(false);
+    expect(task.text()).toContain('期間: 2026-10-01 〜 2026-10-03');
+    expect(task.text()).toContain('色: 青緑');
+  });
+
+  it('shows an action error for an invalid date range', async () => {
+    stubApi({
+      ...baseRoutes('admin'),
+      'PATCH /api/projects/p1/tasks/t1': json({ error: 'invalid_date_range' }, 400),
+    });
+
+    const { wrapper } = await mountAt(ProjectView, '/projects/p1', alice);
+    await wrapper.get('input[aria-label="開始日"]').setValue('2026-10-01');
+    await flushPromises();
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('終了日は開始日以降にしてください');
   });
 
   it('opens a thread and posts a comment', async () => {
