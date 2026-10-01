@@ -440,7 +440,7 @@ function formatDate(iso: string) {
                       size="sm"
                       @click="cancelInvitation(invitation.id)"
                     >
-                      取消
+                      キャンセル
                     </Button>
                   </TableCell>
                 </TableRow>

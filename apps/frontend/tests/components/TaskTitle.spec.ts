@@ -103,7 +103,7 @@ describe('TaskTitle', () => {
     await startEditing(wrapper);
     await wrapper.get('input[aria-label="タイトル"]').setValue('Discarded');
 
-    await findButton(wrapper, '取消').trigger('click');
+    await findButton(wrapper, 'キャンセル').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('h2').text()).toBe('Write spec');

@@ -206,7 +206,7 @@ describe('CommentThread', () => {
 
     await comment
       .findAll('button')
-      .find((b) => b.text() === '取消')
+      .find((b) => b.text() === 'キャンセル')
       ?.trigger('click');
 
     expect(localStorage.getItem('draft:t1:comment:c1')).toBeNull();

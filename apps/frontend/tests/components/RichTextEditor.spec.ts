@@ -1,6 +1,6 @@
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, ref } from 'vue';
+import { defineComponent, h, shallowRef } from 'vue';
 import { Slice } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/vue-3';
 import { emptyRichTextDoc, plainTextToRichTextDoc, type RichTextDoc } from '@pm-tool/shared';
@@ -25,7 +25,8 @@ function images(doc: RichTextDoc): unknown[] {
 }
 
 async function mountEditor(initial: RichTextDoc = emptyRichTextDoc(), allowImages = true) {
-  const doc = ref(initial);
+  // Match useDraft: a deep ref would proxy the emitted doc and make the editor reset its content.
+  const doc = shallowRef(initial);
   const Host = defineComponent(
     () => () =>
       h(RichTextEditor, {
@@ -271,6 +272,35 @@ describe('RichTextEditor', () => {
 
     expect(linkDialog()).toBeNull();
     expect(doc.value).toEqual(plainTextToRichTextDoc('Hello'));
+  });
+
+  it('applies a heading from the paragraph style menu', async () => {
+    const { wrapper } = await mountEditor(plainTextToRichTextDoc('Hello'));
+    editorFor(wrapper, '本文').commands.setTextSelection(3);
+    const trigger = wrapper.get('button[aria-label="段落スタイル"]');
+    expect(trigger.text()).toContain('本文');
+
+    // Reka UI teleports the menu to <body>, outside the mounted wrapper.
+    await trigger.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+      (element) => element.textContent?.trim() === '見出し 2',
+    );
+    if (!item) throw new Error('Heading 2 menu item not found');
+    item.click();
+    await flushPromises();
+
+    expect(editorFor(wrapper, '本文').isActive('heading', { level: 2 })).toBe(true);
+    expect(trigger.text()).toContain('見出し 2');
+  });
+
+  it('opens the link dialog with Mod-K', async () => {
+    const { wrapper } = await mountEditor();
+
+    await wrapper.get('[role="textbox"]').trigger('keydown', { key: 'k', metaKey: true });
+    await flushPromises();
+
+    expect(linkDialog()?.textContent).toContain('リンクを挿入');
   });
 
   it('renders stored attachment images from the API origin', async () => {

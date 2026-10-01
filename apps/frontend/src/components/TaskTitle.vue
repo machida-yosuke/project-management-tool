@@ -76,7 +76,9 @@ async function save() {
       @keydown="onKeydown"
     />
     <Button type="submit" :disabled="submitting">保存</Button>
-    <Button type="button" variant="outline" :disabled="submitting" @click="cancel">取消</Button>
+    <Button type="button" variant="outline" :disabled="submitting" @click="cancel">
+      キャンセル
+    </Button>
     <p v-if="error" class="basis-full text-destructive" role="alert">{{ error }}</p>
   </form>
   <div v-else class="flex items-start justify-between gap-3">

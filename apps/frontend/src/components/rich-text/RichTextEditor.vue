@@ -1,8 +1,25 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch, type Component } from 'vue';
 import { EditorContent, useEditor, type Editor } from '@tiptap/vue-3';
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
+import {
+  Bold,
+  ChevronDown,
+  Code,
+  Heading1,
+  Heading2,
+  Heading3,
+  Image as ImageIcon,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Pilcrow,
+  SquareCode,
+  Strikethrough,
+  TextQuote,
+} from '@lucide/vue';
 import type { RichTextDoc } from '@pm-tool/shared';
 import { eventFile } from '../../lib/form';
 import {
@@ -25,7 +42,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
+import { Separator } from '../ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 const props = withDefaults(
   defineProps<{ label: string; placeholder?: string; allowImages?: boolean }>(),
@@ -41,7 +66,83 @@ const linkError = ref('');
 let lastEmitted: RichTextDoc | null = null;
 
 const TOOL_CLASS =
-  'h-7 min-w-7 border border-transparent px-1.5 font-normal aria-pressed:border-input aria-pressed:bg-accent aria-pressed:text-accent-foreground';
+  'h-7 min-w-7 border border-transparent px-1.5 aria-pressed:border-input aria-pressed:bg-accent aria-pressed:text-accent-foreground';
+
+type Chain = ReturnType<Editor['chain']>;
+
+interface BlockStyle {
+  label: string;
+  icon: Component;
+  level?: 1 | 2 | 3;
+  apply: (chain: Chain) => Chain;
+}
+
+const PARAGRAPH_STYLE: BlockStyle = {
+  label: '本文',
+  icon: Pilcrow,
+  apply: (c) => c.setParagraph(),
+};
+
+const BLOCK_STYLES: BlockStyle[] = [
+  PARAGRAPH_STYLE,
+  { label: '見出し 1', icon: Heading1, level: 1, apply: (c) => c.setHeading({ level: 1 }) },
+  { label: '見出し 2', icon: Heading2, level: 2, apply: (c) => c.setHeading({ level: 2 }) },
+  { label: '見出し 3', icon: Heading3, level: 3, apply: (c) => c.setHeading({ level: 3 }) },
+];
+
+interface Tool {
+  label: string;
+  shortcut: string;
+  icon: Component;
+  mark: string;
+  apply: (chain: Chain) => Chain;
+}
+
+// Shortcuts mirror the StarterKit defaults so the tooltip matches what the editor actually does.
+const TOOL_GROUPS: Tool[][] = [
+  [
+    { label: '太字', shortcut: '⌘B', icon: Bold, mark: 'bold', apply: (c) => c.toggleBold() },
+    { label: '斜体', shortcut: '⌘I', icon: Italic, mark: 'italic', apply: (c) => c.toggleItalic() },
+    {
+      label: '打消し線',
+      shortcut: '⌘⇧S',
+      icon: Strikethrough,
+      mark: 'strike',
+      apply: (c) => c.toggleStrike(),
+    },
+    { label: 'コード', shortcut: '⌘E', icon: Code, mark: 'code', apply: (c) => c.toggleCode() },
+  ],
+  [
+    {
+      label: '箇条書き',
+      shortcut: '⌘⇧8',
+      icon: List,
+      mark: 'bulletList',
+      apply: (c) => c.toggleBulletList(),
+    },
+    {
+      label: '番号付きリスト',
+      shortcut: '⌘⇧7',
+      icon: ListOrdered,
+      mark: 'orderedList',
+      apply: (c) => c.toggleOrderedList(),
+    },
+    {
+      label: '引用',
+      shortcut: '⌘⇧B',
+      icon: TextQuote,
+      mark: 'blockquote',
+      apply: (c) => c.toggleBlockquote(),
+    },
+    {
+      label: 'コードブロック',
+      shortcut: '⌘⌥C',
+      icon: SquareCode,
+      mark: 'codeBlock',
+      apply: (c) => c.toggleCodeBlock(),
+    },
+  ],
+];
 
 function imageFiles(list: FileList | null | undefined): File[] {
   return Array.from(list ?? []).filter((file) => file.type.startsWith('image/'));
@@ -75,6 +176,12 @@ const editor = useEditor({
       if (files.length === 0 || !props.allowImages) return false;
       event.preventDefault();
       void insertImages(files);
+      return true;
+    },
+    handleKeyDown: (_view, event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return false;
+      event.preventDefault();
+      toggleLink();
       return true;
     },
     handleDrop: (view, event, _slice, moved) => {
@@ -133,7 +240,7 @@ function onFileChange(event: Event) {
   if (file) void insertImages([file]);
 }
 
-function run(command: (chain: ReturnType<Editor['chain']>) => ReturnType<Editor['chain']>) {
+function run(command: (chain: Chain) => Chain) {
   if (!editor.value) return;
   command(editor.value.chain().focus()).run();
 }
@@ -172,157 +279,132 @@ function insertLink() {
 }
 
 // Reka returns focus to the toolbar button on close; send it back to the editor instead.
-function onLinkDialogCloseAutoFocus(event: Event) {
+function returnFocusToEditor(event: Event) {
   event.preventDefault();
   editor.value?.commands.focus();
 }
 
-function isActive(name: string, attrs?: Record<string, unknown>) {
-  return editor.value?.isActive(name, attrs) ? 'true' : 'false';
+function isActive(name: string) {
+  return editor.value?.isActive(name) ? 'true' : 'false';
 }
+
+const currentBlockStyle = computed(() => {
+  const instance = editor.value;
+  const heading = instance
+    ? BLOCK_STYLES.find(
+        (style) => style.level && instance.isActive('heading', { level: style.level }),
+      )
+    : undefined;
+  return heading ?? PARAGRAPH_STYLE;
+});
 </script>
 
 <template>
   <div class="rounded-md border border-input">
-    <div
-      v-if="editor"
-      class="flex flex-wrap gap-0.5 border-b border-border bg-muted/50 p-1"
-      role="toolbar"
-      :aria-label="`${label} の書式`"
-    >
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="太字"
-        :aria-pressed="isActive('bold')"
-        @click="run((c) => c.toggleBold())"
+    <TooltipProvider v-if="editor" :delay-duration="300">
+      <div
+        class="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted/50 p-1"
+        role="toolbar"
+        :aria-label="`${label} の書式`"
       >
-        <b>B</b>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="斜体"
-        :aria-pressed="isActive('italic')"
-        @click="run((c) => c.toggleItalic())"
-      >
-        <i>I</i>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="打消し線"
-        :aria-pressed="isActive('strike')"
-        @click="run((c) => c.toggleStrike())"
-      >
-        <s>S</s>
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="コード"
-        :aria-pressed="isActive('code')"
-        @click="run((c) => c.toggleCode())"
-      >
-        &lt;/&gt;
-      </Button>
-      <Button
-        v-for="level in [1, 2, 3] as const"
-        :key="level"
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        :aria-label="`見出し ${level}`"
-        :aria-pressed="isActive('heading', { level })"
-        @click="run((c) => c.toggleHeading({ level }))"
-      >
-        H{{ level }}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="箇条書き"
-        :aria-pressed="isActive('bulletList')"
-        @click="run((c) => c.toggleBulletList())"
-      >
-        •
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="番号付きリスト"
-        :aria-pressed="isActive('orderedList')"
-        @click="run((c) => c.toggleOrderedList())"
-      >
-        1.
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="引用"
-        :aria-pressed="isActive('blockquote')"
-        @click="run((c) => c.toggleBlockquote())"
-      >
-        引用
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="コードブロック"
-        :aria-pressed="isActive('codeBlock')"
-        @click="run((c) => c.toggleCodeBlock())"
-      >
-        { }
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        :class="TOOL_CLASS"
-        type="button"
-        aria-label="リンク"
-        :aria-pressed="isActive('link')"
-        @click="toggleLink"
-      >
-        リンク
-      </Button>
-      <template v-if="allowImages">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          :class="TOOL_CLASS"
-          aria-label="画像を挿入"
-          @click="fileInput?.click()"
-        >
-          画像
-        </Button>
-        <input
-          ref="fileInput"
-          type="file"
-          accept="image/*"
-          class="hidden"
-          aria-label="挿入する画像"
-          @change="onFileChange"
-        />
-      </template>
-    </div>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :class="TOOL_CLASS"
+                  type="button"
+                  aria-label="段落スタイル"
+                >
+                  <component :is="currentBlockStyle.icon" class="size-4" />
+                  <span class="hidden sm:inline">{{ currentBlockStyle.label }}</span>
+                  <ChevronDown class="size-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>段落スタイル</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="start" @close-auto-focus="returnFocusToEditor">
+            <DropdownMenuItem
+              v-for="style in BLOCK_STYLES"
+              :key="style.label"
+              @select="run(style.apply)"
+            >
+              <component :is="style.icon" class="size-4" />
+              {{ style.label }}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <template v-for="group in TOOL_GROUPS" :key="group[0]?.label">
+          <Separator orientation="vertical" class="mx-1 data-[orientation=vertical]:h-5" />
+          <Tooltip v-for="tool in group" :key="tool.label">
+            <TooltipTrigger as-child>
+              <Button
+                variant="ghost"
+                size="sm"
+                :class="TOOL_CLASS"
+                type="button"
+                :aria-label="tool.label"
+                :aria-pressed="isActive(tool.mark)"
+                @click="run(tool.apply)"
+              >
+                <component :is="tool.icon" class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {{ tool.label }}
+              <kbd class="ml-1 text-primary-foreground/70">{{ tool.shortcut }}</kbd>
+            </TooltipContent>
+          </Tooltip>
+        </template>
+        <Separator orientation="vertical" class="mx-1 data-[orientation=vertical]:h-5" />
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              :class="TOOL_CLASS"
+              type="button"
+              aria-label="リンク"
+              :aria-pressed="isActive('link')"
+              @click="toggleLink"
+            >
+              <LinkIcon class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent
+            >リンク <kbd class="ml-1 text-primary-foreground/70">⌘K</kbd></TooltipContent
+          >
+        </Tooltip>
+        <template v-if="allowImages">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                :class="TOOL_CLASS"
+                aria-label="画像を挿入"
+                @click="fileInput?.click()"
+              >
+                <ImageIcon class="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>画像を挿入</TooltipContent>
+          </Tooltip>
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            aria-label="挿入する画像"
+            @change="onFileChange"
+          />
+        </template>
+      </div>
+    </TooltipProvider>
     <div class="relative flex min-h-[9em] resize-y flex-col overflow-auto">
       <p
         v-if="placeholder && editor?.isEmpty"
@@ -335,7 +417,7 @@ function isActive(name: string, attrs?: Record<string, unknown>) {
     </div>
     <p v-if="toolError" class="mx-2 my-1 text-destructive" role="alert">{{ toolError }}</p>
     <Dialog v-model:open="linkDialogOpen">
-      <DialogContent class="sm:max-w-md" @close-auto-focus="onLinkDialogCloseAutoFocus">
+      <DialogContent class="sm:max-w-md" @close-auto-focus="returnFocusToEditor">
         <DialogHeader>
           <DialogTitle>リンクを挿入</DialogTitle>
           <DialogDescription>リンク先の URL を入力してください</DialogDescription>

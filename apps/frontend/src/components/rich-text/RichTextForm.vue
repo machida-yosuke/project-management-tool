@@ -94,7 +94,7 @@ function onCancel() {
         :disabled="submitting"
         @click="onCancel"
       >
-        取消
+        キャンセル
       </Button>
     </div>
   </form>
