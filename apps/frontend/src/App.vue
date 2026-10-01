@@ -14,7 +14,7 @@ onMounted(() => {
 
 <template>
   <AppHeader />
-  <main class="mx-auto w-full max-w-screen-2xl px-6 py-8">
+  <main class="mx-auto w-full max-w-screen-2xl px-4 py-8 sm:px-6">
     <router-view />
   </main>
 </template>

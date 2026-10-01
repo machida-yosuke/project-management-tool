@@ -37,7 +37,7 @@ const bandClass = computed(() => {
       'clip-start': props.segment.clipStart,
       'clip-end': props.segment.clipEnd,
     },
-    'pointer-events-auto absolute inset-y-1 flex cursor-pointer touch-none items-center overflow-hidden rounded-[4px] border border-transparent bg-clip-padding px-2 text-xs leading-none text-white select-none',
+    'pointer-events-auto absolute inset-y-1 flex cursor-pointer touch-manipulation items-center overflow-hidden rounded-[4px] border border-transparent bg-clip-padding px-2 text-xs leading-none text-white select-none',
     'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
     props.segment.clipStart && 'rounded-l-none',
     props.segment.clipEnd && 'rounded-r-none',
@@ -64,7 +64,7 @@ const bandClass = computed(() => {
   >
     <span
       v-if="draggable && !segment.clipStart"
-      class="absolute inset-y-0 left-0 w-2 cursor-ew-resize"
+      class="absolute inset-y-0 left-0 w-2 cursor-ew-resize pointer-coarse:w-4"
       data-testid="handle-start"
       @pointerdown.stop="emit('grab', $event, 'start')"
     />
@@ -73,7 +73,7 @@ const bandClass = computed(() => {
     </span>
     <span
       v-if="draggable && !segment.clipEnd"
-      class="absolute inset-y-0 right-0 w-2 cursor-ew-resize"
+      class="absolute inset-y-0 right-0 w-2 cursor-ew-resize pointer-coarse:w-4"
       data-testid="handle-end"
       @pointerdown.stop="emit('grab', $event, 'end')"
     />

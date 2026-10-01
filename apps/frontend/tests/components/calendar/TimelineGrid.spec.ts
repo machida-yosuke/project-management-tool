@@ -1,7 +1,8 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '@pm-tool/shared';
 import TimelineGrid from '../../../src/components/calendar/TimelineGrid.vue';
+import { LONG_PRESS_MS } from '../../../src/components/calendar/useBandDrag';
 import { MEASURE_CELLS_KEY, type DayCellRect } from '../../../src/lib/calendar-drag';
 import { addDays } from '../../../src/lib/dates';
 import { makeLabel, makeTask } from '../../helpers/api-mock';
@@ -50,6 +51,10 @@ const task = makeTask({
 
 function pointer(clientX: number) {
   return { clientX, clientY: 10, pointerId: 1, button: 0 };
+}
+
+function touch(clientX: number, clientY = 10) {
+  return { clientX, clientY, pointerId: 2, button: 0, pointerType: 'touch' };
 }
 
 function band(wrapper: VueWrapper) {
@@ -283,5 +288,86 @@ describe('TimelineGrid', () => {
     expect(late?.find('[data-testid="handle-start"]').exists()).toBe(true);
     expect(late?.attributes('style')).toContain('left: 480px');
     expect(late?.attributes('style')).toContain('width: 80px');
+  });
+
+  describe('with touch', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('opens the task on a tap released before the long press', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS - 1);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+
+      expect(wrapper.emitted('open')).toEqual([['t1']]);
+      expect(wrapper.emitted('commit')).toBeUndefined();
+      expect(band(wrapper).attributes('style')).toContain('left: 40px');
+    });
+
+    it('leaves the gesture to scrolling when the finger moves before the long press', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      await grid(wrapper).trigger('pointermove', touch(x(1), 40));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointermove', touch(x(3), 40));
+      await grid(wrapper).trigger('pointerup', touch(x(3), 40));
+
+      expect(wrapper.emitted('open')).toBeUndefined();
+      expect(wrapper.emitted('commit')).toBeUndefined();
+      expect(band(wrapper).classes()).not.toContain('dragging');
+    });
+
+    it('drags after a long press and commits the new dates', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointermove', touch(x(3)));
+
+      expect(band(wrapper).classes()).toContain('dragging');
+
+      await grid(wrapper).trigger('pointerup', touch(x(3)));
+
+      expect(wrapper.emitted('commit')).toEqual([
+        [{ taskId: 't1', startDate: '2026-10-01', endDate: '2026-10-03' }],
+      ]);
+      expect(wrapper.emitted('open')).toBeUndefined();
+    });
+
+    it('does nothing when released after a long press without moving', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+
+      expect(wrapper.emitted('open')).toBeUndefined();
+      expect(wrapper.emitted('commit')).toBeUndefined();
+    });
+
+    it('blocks touch scrolling only while a long-press drag is active', async () => {
+      const wrapper = mountGrid([task]);
+      const scroll = () => {
+        const event = new Event('touchmove', { cancelable: true });
+        grid(wrapper).element.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      expect(scroll()).toBe(false);
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      expect(scroll()).toBe(true);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+      expect(scroll()).toBe(false);
+    });
   });
 });

@@ -89,10 +89,10 @@ function onInteractOutside(event: Event) {
 </script>
 
 <template>
-  <div class="mb-6 border-b">
+  <div class="mb-6 min-w-0 border-b">
     <template v-if="isHome">
-      <div class="flex items-center gap-2">
-        <h1 class="text-2xl font-semibold tracking-tight">{{ project.name }}</h1>
+      <div class="flex min-w-0 items-center gap-2">
+        <h1 class="min-w-0 truncate text-2xl font-semibold tracking-tight">{{ project.name }}</h1>
         <Dialog v-if="editable" v-model:open="editOpen">
           <DialogTrigger as-child>
             <Button type="button" variant="ghost" size="icon" aria-label="プロジェクトを編集">
@@ -136,7 +136,12 @@ function onInteractOutside(event: Event) {
       />
     </template>
     <nav
-      :class="cn('-mb-px flex gap-6 text-sm font-medium', isHome && 'mt-4')"
+      :class="
+        cn(
+          '-mb-px flex gap-4 overflow-x-auto text-sm font-medium whitespace-nowrap [scrollbar-width:none] sm:gap-6 [&::-webkit-scrollbar]:hidden',
+          isHome && 'mt-4',
+        )
+      "
       aria-label="プロジェクト"
     >
       <RouterLink
@@ -146,7 +151,7 @@ function onInteractOutside(event: Event) {
         :aria-current="tab.active ? 'page' : undefined"
         :class="
           cn(
-            'border-b-2 pb-2 transition-colors',
+            'shrink-0 border-b-2 pb-2 transition-colors',
             tab.active
               ? 'border-info text-info'
               : 'border-transparent text-muted-foreground hover:text-foreground',

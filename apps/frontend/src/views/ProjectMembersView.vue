@@ -297,8 +297,8 @@ function formatDate(iso: string) {
             </Dialog>
           </div>
           <div class="rounded-lg border">
-            <Table>
-              <TableHeader>
+            <Table class="block sm:table">
+              <TableHeader class="hidden sm:table-header-group">
                 <TableRow class="hover:bg-transparent">
                   <TableHead class="px-4">メンバー</TableHead>
                   <TableHead class="px-4">ロール</TableHead>
@@ -307,30 +307,37 @@ function formatDate(iso: string) {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody class="block sm:table-row-group">
                 <TableRow
                   v-for="member in members"
                   :key="member.userId"
-                  class="last:border-b-0"
+                  class="block border-b px-4 py-3 last:border-b-0 sm:table-row sm:p-0"
                   data-testid="member"
                 >
-                  <TableCell class="px-4 py-3">
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap"
+                  >
                     <div class="flex items-center gap-3">
                       <UserAvatar
                         :user-id="member.userId"
                         :name="member.name"
                         :avatar-url="member.avatarUrl"
                       />
-                      <div class="flex flex-col">
+                      <div class="flex min-w-0 flex-col">
                         <span class="flex items-center gap-2 font-medium">
                           {{ member.name }}
                           <Badge v-if="member.isOwner" variant="warning">オーナー</Badge>
                         </span>
-                        <span class="text-xs text-muted-foreground">{{ member.email }}</span>
+                        <span class="text-xs break-all text-muted-foreground">{{
+                          member.email
+                        }}</span>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell class="px-4 py-3">
+                  <TableCell
+                    class="flex items-center gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3"
+                  >
+                    <span class="text-xs text-muted-foreground sm:hidden">ロール:</span>
                     <Select
                       v-if="isAdmin && !member.isOwner"
                       :model-value="member.role"
@@ -347,7 +354,10 @@ function formatDate(iso: string) {
                     </Select>
                     <Badge v-else variant="info">{{ ROLE_LABELS[member.role] }}</Badge>
                   </TableCell>
-                  <TableCell v-if="isAdmin" class="px-4 py-3 text-right">
+                  <TableCell
+                    v-if="isAdmin"
+                    class="flex flex-wrap gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3 sm:text-right"
+                  >
                     <AlertDialog v-if="canRemove(member)">
                       <AlertDialogTrigger as-child>
                         <Button
@@ -388,8 +398,8 @@ function formatDate(iso: string) {
           <h2 class="mb-3 text-lg font-semibold">未受諾の招待</h2>
           <EmptyState v-if="invitations.length === 0" message="未受諾の招待はありません" />
           <div v-else class="rounded-lg border">
-            <Table>
-              <TableHeader>
+            <Table class="block sm:table">
+              <TableHeader class="hidden sm:table-header-group">
                 <TableRow class="hover:bg-transparent">
                   <TableHead class="px-4">メールアドレス</TableHead>
                   <TableHead class="px-4">ロール</TableHead>
@@ -399,21 +409,31 @@ function formatDate(iso: string) {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody class="block sm:table-row-group">
                 <TableRow
                   v-for="invitation in invitations"
                   :key="invitation.id"
-                  class="last:border-b-0"
+                  class="block border-b px-4 py-3 last:border-b-0 sm:table-row sm:p-0"
                   data-testid="pending-invitation"
                 >
-                  <TableCell class="px-4 py-3">{{ invitation.email }}</TableCell>
-                  <TableCell class="px-4 py-3">
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap break-all"
+                    >{{ invitation.email }}</TableCell
+                  >
+                  <TableCell
+                    class="flex items-center gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3"
+                  >
+                    <span class="text-xs text-muted-foreground sm:hidden">ロール:</span>
                     <Badge variant="warning">{{ ROLE_LABELS[invitation.role] }}</Badge>
                   </TableCell>
-                  <TableCell class="px-4 py-3 text-muted-foreground">
-                    {{ formatDate(invitation.expiresAt) }}
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap text-muted-foreground"
+                  >
+                    <span class="sm:hidden">期限: </span>{{ formatDate(invitation.expiresAt) }}
                   </TableCell>
-                  <TableCell class="px-4 py-3 text-right">
+                  <TableCell
+                    class="flex flex-wrap gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3 sm:text-right"
+                  >
                     <Button
                       type="button"
                       variant="outline"

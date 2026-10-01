@@ -8,12 +8,12 @@ import { useAuthStore } from '../src/stores/auth';
 import { stubApi } from './helpers/api-mock';
 
 describe('App', () => {
-  it('renders the app title', async () => {
+  it('renders the app logo', async () => {
     stubApi({ 'GET /api/auth/me': new Response(null, { status: 401 }) });
     await router.push('/login');
     const wrapper = mount(App, { global: { plugins: [createPinia(), PiniaColada, router] } });
 
-    expect(wrapper.text()).toContain('Project Management Tool');
+    expect(wrapper.find('a[aria-label="Cadence"] svg').exists()).toBe(true);
   });
 
   it('shows a user menu with settings and logout when authenticated', async () => {

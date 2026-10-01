@@ -165,8 +165,10 @@ async function acceptInvitation(invitationId: string) {
         <ul class="space-y-3">
           <li v-for="invitation in invitations" :key="invitation.id" data-testid="invitation">
             <Card class="gap-4 py-4">
-              <CardHeader class="px-4">
-                <CardTitle class="flex items-center gap-2">
+              <CardHeader
+                class="px-4 has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]"
+              >
+                <CardTitle class="flex flex-wrap items-center gap-2">
                   {{ invitation.projectName }}
                   <Badge variant="warning">{{ ROLE_LABELS[invitation.role] }}</Badge>
                 </CardTitle>
@@ -180,8 +182,13 @@ async function acceptInvitation(invitationId: string) {
                   />
                   {{ invitation.invitedBy.name }}
                 </CardDescription>
-                <CardAction>
-                  <form class="flex gap-2" @submit.prevent="acceptInvitation(invitation.id)">
+                <CardAction
+                  class="col-start-auto row-span-1 row-start-auto justify-self-stretch sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end"
+                >
+                  <form
+                    class="flex flex-wrap gap-2"
+                    @submit.prevent="acceptInvitation(invitation.id)"
+                  >
                     <Input
                       v-model="passcodes[invitation.id]"
                       class="w-40"

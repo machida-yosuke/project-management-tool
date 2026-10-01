@@ -91,7 +91,7 @@ function grab(event: PointerEvent, task: Task, mode: DragMode) {
 <template>
   <div
     ref="gridElement"
-    class="overflow-x-auto rounded-[4px] border border-border [--label-width:200px]"
+    class="overflow-x-auto rounded-[4px] border border-border [--label-width:120px] sm:[--label-width:200px]"
     data-testid="timeline-grid"
     :style="{ '--column-width': `${columnWidth}px` }"
     @pointermove="onPointerMove"
