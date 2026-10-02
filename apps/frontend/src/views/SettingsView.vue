@@ -61,12 +61,12 @@ async function saveName() {
   savingName.value = true;
   try {
     await authStore.updateName(nameInput.value.trim());
-    nameNotice.value = '名前を更新しました';
+    nameNotice.value = '名前を保存しました';
   } catch (e) {
     nameError.value = errorMessage(
       e,
       { validation_error: '名前は1〜100文字で入力してください' },
-      '名前の更新に失敗しました',
+      '名前の保存に失敗しました',
     );
   } finally {
     savingName.value = false;

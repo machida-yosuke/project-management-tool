@@ -44,6 +44,7 @@ info:
     - 画像添付のアップロード: `admin` / `staff`
     - コメント編集: 投稿者本人（かつ `admin` / `staff`）
     - メンバー・招待の管理: `admin`
+    - プロジェクトの完了・進行中への戻し: `admin`
     - プロジェクト削除: オーナーのみ
 servers:
   - url: https://localhost:8787
@@ -80,7 +81,7 @@ tags:
   - name: invitations
     description: プロジェクトへの招待
   - name: me
-    description: ログイン中ユーザーのアカウント設定
+    description: ログイン中ユーザーのアカウント設定と担当タスク
   - name: avatars
     description: アバター画像の配信
   - name: attachments
@@ -216,7 +217,7 @@ paths:
     get:
       operationId: listProjects
       summary: 自分が所属するプロジェクトの一覧を取得する
-      description: 作成日時の昇順。`role` は自分のロール。
+      description: 作成日時の昇順。`role` は自分のロール。完了済みのプロジェクトも含む。
       tags: [projects]
       responses:
         '200':
@@ -319,6 +320,54 @@ paths:
       responses:
         '204':
           description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: archiveProject
+      summary: プロジェクトを完了にする
+      description: '`admin` のみ。冪等で、既にその状態なら何も変えず現在のプロジェクトを返す。完了後も閲覧・編集の権限は変わらない。'
+      tags: [projects]
+      responses:
+        '200':
+          description: 現在のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/unarchive:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: unarchiveProject
+      summary: プロジェクトを進行中に戻す
+      description: '`admin` のみ。冪等で、既にその状態なら何も変えず現在のプロジェクトを返す。完了後も閲覧・編集の権限は変わらない。'
+      tags: [projects]
+      responses:
+        '200':
+          description: 現在のプロジェクト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1243,6 +1292,30 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /api/me/tasks:
+    get:
+      operationId: listMyTasks
+      summary: 自分が担当している未完了タスクの一覧を取得する
+      description: |
+        自分が担当者で `status` が `open`、タスクが未アーカイブ、所属プロジェクトが進行中、かつ自分がそのプロジェクトのメンバーであるタスク。
+        `endDate` の昇順（`null` は最後）、同順位は作成日時の昇順。
+      tags: [me]
+      responses:
+        '200':
+          description: 担当タスク一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MyTask'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /api/me/avatar:
     put:
       operationId: uploadAvatar
@@ -1575,7 +1648,7 @@ components:
           $ref: '#/components/schemas/AvatarUrl'
     Project:
       type: object
-      required: [id, name, description, ownerId, role, createdAt]
+      required: [id, name, description, ownerId, role, archivedAt, createdAt]
       properties:
         id:
           type: string
@@ -1590,6 +1663,11 @@ components:
           allOf:
             - $ref: '#/components/schemas/ProjectRole'
           description: リクエストしたユーザー自身のロール
+        archivedAt:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+          description: 完了にした日時。`null` なら進行中
         createdAt:
           $ref: '#/components/schemas/Timestamp'
     ProjectMember:
@@ -1703,6 +1781,21 @@ components:
           $ref: '#/components/schemas/Timestamp'
         updatedAt:
           $ref: '#/components/schemas/Timestamp'
+    MyTask:
+      allOf:
+        - $ref: '#/components/schemas/Task'
+        - type: object
+          required: [project]
+          properties:
+            project:
+              type: object
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+              description: タスクが属するプロジェクト
     TaskComment:
       type: object
       required: [id, taskId, author, body, createdAt, editedAt]

@@ -37,9 +37,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
 import { dueStateClass } from '../lib/due-state';
+import { TASK_ARCHIVE_HELP, TASK_DONE_HELP } from '../lib/help-texts';
 import { listTasksKeyPrefix, patchCachedTasks, useInvalidate } from '../lib/query';
 import { useAuthStore } from '../stores/auth';
 
@@ -278,9 +280,16 @@ function formatTimestamp(iso: string) {
               :current-user-id="authStore.user?.id ?? null"
             >
               <template #form-actions>
-                <Button type="button" variant="outline" size="sm" @click="toggleDone(task)">
-                  {{ task.status === 'done' ? '未完了に戻す' : '完了にする' }}
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button type="button" variant="outline" size="sm" @click="toggleDone(task)">
+                        {{ task.status === 'done' ? '未完了に戻す' : '完了にする' }}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent class="max-w-xs">{{ TASK_DONE_HELP }}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </template>
             </CommentThread>
           </div>
@@ -416,26 +425,31 @@ function formatTimestamp(iso: string) {
                   {{ formatTimestamp(task.archivedAt) }}
                 </span>
                 <span v-else class="text-muted-foreground">未アーカイブ</span>
-                <template v-if="editable">
-                  <Button
-                    v-if="task.archivedAt === null"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="archiveTask(task)"
-                  >
-                    アーカイブ
-                  </Button>
-                  <Button
-                    v-else
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="unarchiveTask(task)"
-                  >
-                    復元
-                  </Button>
-                </template>
+                <TooltipProvider v-if="editable">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        v-if="task.archivedAt === null"
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        @click="archiveTask(task)"
+                      >
+                        アーカイブ
+                      </Button>
+                      <Button
+                        v-else
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="unarchiveTask(task)"
+                      >
+                        復元
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent class="max-w-xs">{{ TASK_ARCHIVE_HELP }}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </SidebarSection>
           </aside>

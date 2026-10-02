@@ -2,9 +2,20 @@ import { flushPromises, type DOMWrapper, type VueWrapper } from '@vue/test-utils
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectRole, Task } from '@pm-tool/shared';
 import TimelineGrid from '../../src/components/calendar/TimelineGrid.vue';
+import { TASK_ARCHIVE_HELP } from '../../src/lib/help-texts';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
-import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import {
+  alice,
+  bob,
+  json,
+  makeLabel,
+  makeMember,
+  makeProject,
+  makeTask,
+  stubApi,
+} from '../helpers/api-mock';
 import { mountAt } from '../helpers/mount';
+import { chooseOption } from '../helpers/reka-select';
 
 const PATH = '/projects/p1/calendar?date=2026-09-15';
 
@@ -14,7 +25,7 @@ const activeTasks: Task[] = [
     title: 'Design',
     startDate: '2026-09-14',
     endDate: '2026-09-16',
-    label: makeLabel({ color: '#3e63dd' }),
+    label: makeLabel({ id: 'l1', color: '#3e63dd' }),
     assignee: bob,
   }),
   makeTask({
@@ -40,6 +51,8 @@ function baseRoutes(role: ProjectRole = 'staff') {
     'GET /api/projects/p1': json(makeProject({ role })),
     'GET /api/projects/p1/tasks': json(activeTasks),
     'GET /api/projects/p1/tasks?includeArchived=true': json([...activeTasks, archivedTask]),
+    'GET /api/projects/p1/members': json([makeMember(alice), makeMember(bob)]),
+    'GET /api/projects/p1/labels': json([makeLabel({ id: 'l1' })]),
   };
 }
 
@@ -177,7 +190,13 @@ describe('ProjectCalendarView', () => {
     expect(rowIds(wrapper)).not.toContain('t5');
 
     const toggle = wrapper.get('[role="checkbox"]');
-    expect(wrapper.get(`label[for="${toggle.attributes('id')}"]`).text()).toBe('アーカイブを表示');
+    expect(wrapper.get(`label[for="${toggle.attributes('id')}"]`).text()).toBe(
+      'アーカイブ済みも表示',
+    );
+    expect(document.body.textContent).not.toContain(TASK_ARCHIVE_HELP);
+    await toggle.trigger('focusin');
+    await flushPromises();
+    expect(document.body.textContent).toContain(TASK_ARCHIVE_HELP);
     await toggle.trigger('click');
     await flushPromises();
 
@@ -266,6 +285,40 @@ describe('ProjectCalendarView', () => {
 
     expect(wrapper.get('[role="alert"]').text()).toBe('操作に失敗しました');
     expect(bandLeft()).toBe('520');
+  });
+
+  it('filters tasks by assignee and label while keeping the date', async () => {
+    stubApi(baseRoutes());
+
+    const { wrapper, router } = await mountAt(ProjectCalendarView, PATH, alice);
+    expect(wrapper.find('[aria-label="期間で絞り込む"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="並べ替え"]').exists()).toBe(false);
+
+    await chooseOption(wrapper.get('[aria-label="担当者で絞り込む"]'), '未割り当て');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ date: '2026-09-15', assignee: 'none' });
+    expect(rowIds(wrapper)).toEqual(['t2', 't3', 't4']);
+
+    await findButton(wrapper, '次へ').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ date: '2026-10-15', assignee: 'none' });
+
+    await findButton(wrapper, '絞り込みを解除').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ date: '2026-10-15' });
+    expect(rowIds(wrapper)).toEqual(['t1', 't2', 't3', 't4']);
+
+    await chooseOption(wrapper.get('[aria-label="ラベルで絞り込む"]'), 'バグ報告');
+    await flushPromises();
+    expect(rowIds(wrapper)).toEqual(['t1']);
+  });
+
+  it('restores calendar filters from the URL and ignores the due filter', async () => {
+    stubApi(baseRoutes());
+
+    const { wrapper } = await mountAt(ProjectCalendarView, `${PATH}&label=none&due=overdue`, alice);
+
+    expect(rowIds(wrapper)).toEqual(['t2', 't3', 't4']);
   });
 
   it('reports a missing project', async () => {
