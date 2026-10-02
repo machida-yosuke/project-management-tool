@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/vue-3';
 import { emptyRichTextDoc, plainTextToRichTextDoc, type RichTextDoc } from '@pm-tool/shared';
 import RichTextEditor from '../../src/components/rich-text/RichTextEditor.vue';
 import RichTextForm from '../../src/components/rich-text/RichTextForm.vue';
+import { ATTACHMENT_HELP } from '../../src/lib/help-texts';
 import { AttachmentTooLargeError } from '../../src/lib/image';
 import { json, stubApi } from '../helpers/api-mock';
 import { editorFor, typeInto } from '../helpers/rich-text';
@@ -165,12 +166,19 @@ describe('RichTextEditor', () => {
     expect(images(doc.value)).toEqual([]);
   });
 
+  it('tells users to share PDFs, videos and assets through Google Drive', async () => {
+    const { wrapper } = await mountEditor();
+
+    expect(wrapper.text()).toContain(ATTACHMENT_HELP);
+  });
+
   it('hides the image controls when images are not allowed', async () => {
     const { wrapper } = await mountEditor(emptyRichTextDoc(), false);
 
     expect(wrapper.find('button[aria-label="リンク"]').exists()).toBe(true);
     expect(wrapper.find('button[aria-label="画像を挿入"]').exists()).toBe(false);
     expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(ATTACHMENT_HELP);
   });
 
   it('ignores pasted and dropped image files when images are not allowed', async () => {
