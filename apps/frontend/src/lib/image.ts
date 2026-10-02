@@ -1,5 +1,5 @@
 export const AVATAR_SIZE = 128;
-export const ATTACHMENT_MAX_SIDE = 1600;
+export const ATTACHMENT_MAX_SIDE = 1000;
 export const ATTACHMENT_MAX_BYTES = 512000;
 
 const AVATAR_QUALITY = 0.85;

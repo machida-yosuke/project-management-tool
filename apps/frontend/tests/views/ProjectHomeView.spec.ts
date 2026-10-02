@@ -368,7 +368,14 @@ describe('ProjectHomeView', () => {
 
     const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.get('[data-testid="project-not-found"]').text()).toContain(
+      'プロジェクトが見つかりません',
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    const homeLinks = wrapper
+      .findAll('[data-testid="project-not-found"] a')
+      .filter((a) => a.text() === 'ホームへ戻る');
+    expect(homeLinks.map((a) => a.attributes('href'))).toEqual(['/']);
     expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('今週のタスク');
   });

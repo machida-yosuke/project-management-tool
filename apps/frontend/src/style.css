@@ -218,7 +218,11 @@
     color: #555;
   }
 
+  /* Preflight makes img a block, which pushes ProseMirror's inline cursor hacks (separator imgs,
+     trailing br) onto their own lines and leaves a blank line above and below every image. */
   .rich-text img {
+    display: inline-block;
+    vertical-align: bottom;
     max-width: 100%;
     height: auto;
   }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import { useQueryCache } from '@pinia/colada';
 import { canEdit } from '@pm-tool/shared';
 import {
   useArchiveTask,
@@ -20,6 +21,7 @@ import UserAvatar from '../components/UserAvatar.vue';
 import LabelFormDialog from '../components/label/LabelFormDialog.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
 import SidebarSection from '../components/task/SidebarSection.vue';
 import TaskLabelPill from '../components/task/TaskLabelPill.vue';
@@ -38,11 +40,12 @@ import {
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { eventValue } from '../lib/form';
 import { dueStateClass } from '../lib/due-state';
-import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import { listTasksKeyPrefix, patchCachedTasks, useInvalidate } from '../lib/query';
 import { useAuthStore } from '../stores/auth';
 
 const route = useRoute();
 const invalidate = useInvalidate();
+const queryCache = useQueryCache();
 const authStore = useAuthStore();
 
 const projectId = computed(() => String(route.params.projectId));
@@ -69,13 +72,17 @@ const editable = computed(() => (project.value ? canEdit(project.value.role) : f
 const labelsQuery = useListLabels(projectId, () => ({ query: { enabled: editable.value } }));
 const labels = computed(() => labelsQuery.data.value ?? []);
 
+const firstLoadError = computed(
+  () => projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value,
+);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました') : '';
 });
 const commentsError = computed(() => {
   const e = commentsQuery.error.value;
@@ -91,7 +98,46 @@ function invalidateTasks() {
   return invalidate(listTasksKeyPrefix(projectId.value));
 }
 
-const updateTaskMutation = useUpdateTask({ mutation: { onSuccess: invalidateTasks } });
+// Fields that cannot be resolved locally (e.g. a label not loaded yet) keep their value until the refetch.
+function applyUpdate(current: Task, request: UpdateTaskRequest): Task {
+  const next = { ...current };
+  if (request.status !== undefined) next.status = request.status;
+  if (request.startDate !== undefined) next.startDate = request.startDate;
+  if (request.endDate !== undefined) next.endDate = request.endDate;
+  if (request.assigneeId === null) {
+    next.assignee = null;
+  } else if (request.assigneeId !== undefined) {
+    const member = members.value.find((candidate) => candidate.userId === request.assigneeId);
+    if (member) {
+      next.assignee = {
+        id: member.userId,
+        email: member.email,
+        name: member.name,
+        avatarUrl: member.avatarUrl,
+      };
+    }
+  }
+  if (request.labelId === null) {
+    next.label = null;
+  } else if (request.labelId !== undefined) {
+    next.label = labels.value.find((candidate) => candidate.id === request.labelId) ?? next.label;
+  }
+  return next;
+}
+
+const updateTaskMutation = useUpdateTask({
+  mutation: {
+    onMutate: (vars) => ({
+      rollback: patchCachedTasks(queryCache, vars.projectId, vars.taskId, (current) =>
+        applyUpdate(current, vars.updateTaskRequest),
+      ),
+    }),
+    onError: (_error, _vars, context) => {
+      context.rollback?.();
+    },
+    onSettled: (_data, _error, vars) => invalidate(listTasksKeyPrefix(vars.projectId)),
+  },
+});
 const archiveTaskMutation = useArchiveTask({ mutation: { onSuccess: invalidateTasks } });
 const unarchiveTaskMutation = useUnarchiveTask({ mutation: { onSuccess: invalidateTasks } });
 
@@ -183,6 +229,7 @@ function formatTimestamp(iso: string) {
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />

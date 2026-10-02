@@ -115,7 +115,10 @@ describe('ProjectMembersView', () => {
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', bob);
     await flushPromises();
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.get('[data-testid="project-not-found"]').text()).toContain(
+      'プロジェクトが見つかりません',
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="member"]').exists()).toBe(false);
   });
 
