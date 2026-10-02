@@ -29,10 +29,9 @@ async function mountAt(path: string) {
 }
 
 describe('ProjectHeader', () => {
-  it('renders the project name and a tab for each project page', async () => {
+  it('renders a tab for each project page', async () => {
     const wrapper = await mountAt('/projects/p1');
 
-    expect(wrapper.get('h1').text()).toBe('Project One');
     expect(wrapper.findAll('nav a').map((a) => [a.text(), a.attributes('href')] as const)).toEqual([
       ['ホーム', '/projects/p1'],
       ['タスク', '/projects/p1/tasks'],
@@ -53,10 +52,11 @@ describe('ProjectHeader', () => {
     const wrapper = await mountAt(path);
 
     expect(wrapper.findAll('nav a[aria-current="page"]').map((a) => a.text())).toEqual([label]);
-    expect(wrapper.get('nav a[aria-current="page"]').classes()).toContain('border-info');
+    expect(wrapper.get('nav a[aria-current="page"]').classes()).toContain('bg-background');
   });
 
   it.each([
+    '/projects/p1',
     '/projects/p1/tasks',
     '/projects/p1/tasks/t1',
     '/projects/p1/calendar',

@@ -131,7 +131,7 @@ describe('ProjectHomeView', () => {
 
     expect(dialog.text()).toContain('プロジェクトを編集');
     expect(inputValue(dialog.get('input[aria-label="プロジェクトの名前"]'))).toBe('Project One');
-    expect(editorFor(dialog, '概要').getText()).toBe('Old summary');
+    expect(editorFor(dialog, '説明').getText()).toBe('Old summary');
   });
 
   it('saves the name and description in one request and refetches the project', async () => {
@@ -140,7 +140,7 @@ describe('ProjectHomeView', () => {
     const { wrapper } = await mountAt(ProjectHomeView, PATH, alice);
     const form = (await openEditProject(wrapper)).get('[data-testid="edit-project"]');
     await form.get('input[aria-label="プロジェクトの名前"]').setValue('  Renamed  ');
-    await replaceContent(form, '概要', 'New summary');
+    await replaceContent(form, '説明', 'New summary');
     await form.trigger('submit');
     await flushPromises();
 
@@ -158,7 +158,7 @@ describe('ProjectHomeView', () => {
 
     const reopened = await openEditProject(wrapper);
     expect(inputValue(reopened.get('input[aria-label="プロジェクトの名前"]'))).toBe('Renamed');
-    expect(editorFor(reopened, '概要').getText()).toBe('New summary');
+    expect(editorFor(reopened, '説明').getText()).toBe('New summary');
   });
 
   it('shows an edit project error inside the dialog and keeps it open', async () => {
@@ -174,7 +174,7 @@ describe('ProjectHomeView', () => {
 
     expect(currentDialog()).not.toBeNull();
     expect(form.get('[role="alert"]').text()).toBe(
-      '名前は1〜200文字、概要は正しい形式で入力してください',
+      '名前は1〜200文字、説明は正しい形式で入力してください',
     );
   });
 
@@ -184,7 +184,7 @@ describe('ProjectHomeView', () => {
     const { wrapper } = await mountAt(ProjectHomeView, PATH, alice);
     const dialog = await openEditProject(wrapper);
     await dialog.get('input[aria-label="プロジェクトの名前"]').setValue('Unsaved name');
-    await replaceContent(dialog, '概要', 'Unsaved summary');
+    await replaceContent(dialog, '説明', 'Unsaved summary');
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(localStorage.getItem('draft:project:p1:description')).not.toBeNull();
     await findButton(dialog, '閉じる').trigger('click');
@@ -193,7 +193,7 @@ describe('ProjectHomeView', () => {
 
     const reopened = await openEditProject(wrapper);
     expect(inputValue(reopened.get('input[aria-label="プロジェクトの名前"]'))).toBe('Project One');
-    expect(editorFor(reopened, '概要').getText()).toBe('Unsaved summary');
+    expect(editorFor(reopened, '説明').getText()).toBe('Unsaved summary');
   });
 
   it('hides the edit project control for substaff', async () => {

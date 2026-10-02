@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { emptyRichTextDoc, plainTextToRichTextDoc } from '@pm-tool/shared';
+import { plainTextToRichTextDoc } from '@pm-tool/shared';
 import ProjectHeader from './ProjectHeader.vue';
 
 const meta = {
@@ -11,6 +11,7 @@ const meta = {
       description: plainTextToRichTextDoc('来期リリース予定の新サービスの企画・開発を進める。'),
       ownerId: 'u1',
       role: 'admin',
+      archivedAt: null,
       createdAt: '2026-09-01T00:00:00.000Z',
     },
   },
@@ -21,14 +22,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Home: Story = {};
-
-export const WithoutDescription: Story = {
-  args: { project: { ...meta.args.project, description: emptyRichTextDoc() } },
-};
-
-export const Substaff: Story = {
-  args: { project: { ...meta.args.project, role: 'substaff' } },
-};
 
 export const Tasks: Story = {
   parameters: { route: '/projects/p1/tasks' },

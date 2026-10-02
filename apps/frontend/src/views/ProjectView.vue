@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { canEdit, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
 import { CircleCheck, CircleDot } from '@lucide/vue';
-import { useCreateTask, useGetProject, useListTasks } from '../api/generated';
+import {
+  useCreateTask,
+  useGetProject,
+  useListLabels,
+  useListMembers,
+  useListTasks,
+} from '../api/generated';
 import type { Task, TaskStatus } from '../api/generated/models';
 import RichTextForm from '../components/rich-text/RichTextForm.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
+import TaskFilterBar from '../components/task/TaskFilterBar.vue';
 import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
@@ -24,17 +31,31 @@ import {
 } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
 import { dueStateClass } from '../lib/due-state';
+import { TASK_ARCHIVE_HELP } from '../lib/help-texts';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 import { taskDescriptionTemplate } from '../lib/rich-text-templates';
+import {
+  applyTaskFilters,
+  filtersFromQuery,
+  isFiltering,
+  sortFromQuery,
+  sortTasks,
+  withTaskQuery,
+  type TaskFilters,
+  type TaskSort,
+} from '../lib/task-filters';
 
 const route = useRoute();
+const router = useRouter();
 const invalidate = useInvalidate();
 
 const projectId = computed(() => String(route.params.projectId));
 const includeArchived = ref(false);
+const archivedHelpOpen = ref(false);
 const statusFilter = ref<TaskStatus>('open');
 
 const projectQuery = useGetProject(projectId);
@@ -43,15 +64,35 @@ const tasksQuery = useListTasks(projectId, () => ({
   includeArchived: includeArchived.value || undefined,
 }));
 
+const membersQuery = useListMembers(projectId);
+const labelsQuery = useListLabels(projectId);
+
 const project = computed(() => projectQuery.data.value ?? null);
-const tasks = computed(() => tasksQuery.data.value ?? []);
+const members = computed(() => membersQuery.data.value ?? []);
+const labels = computed(() => labelsQuery.data.value ?? []);
+const filters = computed(() => filtersFromQuery(route.query));
+const sort = computed(() => sortFromQuery(route.query));
+const tasks = computed(() => applyTaskFilters(tasksQuery.data.value ?? [], filters.value));
 const openCount = computed(() => tasks.value.filter((t) => t.status === 'open').length);
 const doneCount = computed(() => tasks.value.length - openCount.value);
-const visibleTasks = computed(() => tasks.value.filter((t) => t.status === statusFilter.value));
-const emptyMessage = computed(() =>
-  statusFilter.value === 'open' ? '未完了のタスクはありません' : '完了したタスクはありません',
+const visibleTasks = computed(() =>
+  sortTasks(
+    tasks.value.filter((t) => t.status === statusFilter.value),
+    sort.value,
+  ),
 );
+const emptyMessage = computed(() => {
+  if (isFiltering(filters.value)) return '条件に一致するタスクはありません';
+  return statusFilter.value === 'open'
+    ? '未完了のタスクはありません'
+    : '完了したタスクはありません';
+});
+
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
+
+function updateTaskQuery(nextFilters: TaskFilters, nextSort: TaskSort) {
+  return router.replace({ query: withTaskQuery(route.query, nextFilters, nextSort) });
+}
 
 const firstLoadError = computed(() => projectQuery.error.value ?? tasksQuery.error.value);
 const projectNotFound = computed(() => {
@@ -114,8 +155,17 @@ function taskPeriod(task: Task) {
       <ProjectHeader :project="project" />
 
       <section class="space-y-4" aria-label="タスク">
-        <div v-if="editable" class="flex justify-end">
-          <Dialog v-model:open="createTaskOpen">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <TaskFilterBar
+            class="min-w-0 flex-1"
+            :filters="filters"
+            :sort="sort"
+            :members="members"
+            :labels="labels"
+            @update:filters="updateTaskQuery($event, sort)"
+            @update:sort="updateTaskQuery(filters, $event)"
+          />
+          <Dialog v-if="editable" v-model:open="createTaskOpen">
             <DialogTrigger as-child>
               <Button type="button" size="sm">タスクを作成</Button>
             </DialogTrigger>
@@ -185,10 +235,22 @@ function taskPeriod(task: Task) {
                 完了 {{ doneCount }}
               </button>
             </div>
-            <div class="flex items-center gap-2">
-              <Checkbox id="include-archived" v-model="includeArchived" />
-              <Label for="include-archived" class="font-normal">アーカイブ済みも表示</Label>
-            </div>
+            <!-- Focus does not bubble, so reka-ui's focus handler on this wrapper never sees the checkbox; track focusin/out instead. -->
+            <TooltipProvider>
+              <Tooltip v-model:open="archivedHelpOpen">
+                <TooltipTrigger as-child>
+                  <div
+                    class="flex items-center gap-2"
+                    @focusin="archivedHelpOpen = true"
+                    @focusout="archivedHelpOpen = false"
+                  >
+                    <Checkbox id="include-archived" v-model="includeArchived" />
+                    <Label for="include-archived" class="font-normal">アーカイブ済みも表示</Label>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent class="max-w-xs">{{ TASK_ARCHIVE_HELP }}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <EmptyState
             v-if="visibleTasks.length === 0"

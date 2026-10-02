@@ -43,6 +43,7 @@
  * - 画像添付のアップロード: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
@@ -68,6 +69,8 @@ export * from './labelColor';
 export * from './labelNameTakenResponse';
 export * from './listProjectCommentsParams';
 export * from './listTasksParams';
+export * from './myTask';
+export * from './myTaskProject';
 export * from './notFoundResponse';
 export * from './project';
 export * from './projectComment';

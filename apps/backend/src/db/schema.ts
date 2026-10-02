@@ -18,6 +18,7 @@ export const projects = sqliteTable('projects', {
   ownerId: text('owner_id')
     .notNull()
     .references(() => users.id),
+  archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import { DEFAULT_LABELS, emptyRichTextDoc, type Project, type ProjectRole } from '@pm-tool/shared';
 import { projectMembers, projects, taskLabels } from '../db/schema';
@@ -15,6 +15,7 @@ function toProject(row: ProjectRow, role: ProjectRole): Project {
     description: deserializeRichText(row.description, row.id),
     ownerId: row.ownerId,
     role,
+    archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -60,6 +61,7 @@ export async function createProject(
     name: input.name,
     description,
     ownerId,
+    archivedAt: null,
     createdAt: now,
   };
   await orm.batch([
@@ -96,6 +98,25 @@ export async function updateProject(
       .set({ name: input.name, description })
       .where(eq(projects.id, projectId));
   }
+  return getProject(db, projectId, role);
+}
+
+// Conditional on the current state so a repeated call leaves archivedAt untouched.
+export async function setProjectArchived(
+  db: D1Database,
+  projectId: string,
+  role: ProjectRole,
+  archived: boolean,
+): Promise<Project> {
+  await drizzle(db)
+    .update(projects)
+    .set({ archivedAt: archived ? new Date() : null })
+    .where(
+      and(
+        eq(projects.id, projectId),
+        archived ? isNull(projects.archivedAt) : isNotNull(projects.archivedAt),
+      ),
+    );
   return getProject(db, projectId, role);
 }
 
