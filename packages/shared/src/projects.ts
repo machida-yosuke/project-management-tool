@@ -58,6 +58,7 @@ export interface Project {
   description: RichTextDoc;
   ownerId: string;
   role: ProjectRole;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -97,6 +98,10 @@ export interface Task {
   createdBy: UserSummary;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MyTask extends Task {
+  project: { id: string; name: string };
 }
 
 export interface TaskComment {

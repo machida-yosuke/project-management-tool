@@ -7,6 +7,7 @@ import {
   type TaskComment,
   type TaskLabel,
 } from '@pm-tool/shared';
+import { TASK_ARCHIVE_HELP, TASK_DONE_HELP } from '../../src/lib/help-texts';
 import TaskDetailView from '../../src/views/TaskDetailView.vue';
 import {
   alice,
@@ -168,6 +169,22 @@ describe('TaskDetailView', () => {
       expect.arrayContaining(['本文を編集', '編集', '完了にする', 'コメント']),
     );
     expect(wrapper.find('[data-testid="create-comment"]').exists()).toBe(true);
+  });
+
+  it('explains done and archive in tooltips on the buttons', async () => {
+    stubApi(baseRoutes('staff'));
+    const { wrapper } = await mountAt(TaskDetailView, PATH, bob);
+
+    expect(document.body.textContent).not.toContain(TASK_DONE_HELP);
+    const done = findButton(wrapper.get('[data-testid="task-timeline"]'), '完了にする');
+    await done.trigger('focus');
+    await flushPromises();
+    expect(document.body.textContent).toContain(TASK_DONE_HELP);
+    await done.trigger('blur');
+
+    await findButton(wrapper.get('[data-testid="task-sidebar"]'), 'アーカイブ').trigger('focus');
+    await flushPromises();
+    expect(document.body.textContent).toContain(TASK_ARCHIVE_HELP);
   });
 
   it('shows every field as text for substaff', async () => {

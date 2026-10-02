@@ -3,12 +3,19 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import type { AuthEnv } from '../middleware/require-auth';
 import { onValidationError } from '../middleware/validation';
-import { EDITOR_ROLES, assertOwner, assertRole, requireMembership } from '../projects/authorize';
+import {
+  EDITOR_ROLES,
+  MANAGER_ROLES,
+  assertOwner,
+  assertRole,
+  requireMembership,
+} from '../projects/authorize';
 import {
   createProject,
   deleteProject,
   getProject,
   listProjectsForUser,
+  setProjectArchived,
   updateProject,
 } from '../projects/projects';
 
@@ -43,6 +50,18 @@ export const projectsRoute = new Hono<AuthEnv>()
       return c.json(await updateProject(c.env.DB, projectId, membership.role, c.req.valid('json')));
     },
   )
+  .post('/:projectId/archive', zValidator('param', paramSchema, onValidationError), async (c) => {
+    const { projectId } = c.req.valid('param');
+    const membership = await requireMembership(c.env.DB, projectId, c.get('user').id);
+    assertRole(membership, MANAGER_ROLES);
+    return c.json(await setProjectArchived(c.env.DB, projectId, membership.role, true));
+  })
+  .post('/:projectId/unarchive', zValidator('param', paramSchema, onValidationError), async (c) => {
+    const { projectId } = c.req.valid('param');
+    const membership = await requireMembership(c.env.DB, projectId, c.get('user').id);
+    assertRole(membership, MANAGER_ROLES);
+    return c.json(await setProjectArchived(c.env.DB, projectId, membership.role, false));
+  })
   .delete('/:projectId', zValidator('param', paramSchema, onValidationError), async (c) => {
     const { projectId } = c.req.valid('param');
     const membership = await requireMembership(c.env.DB, projectId, c.get('user').id);

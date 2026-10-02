@@ -43,19 +43,30 @@
  * - 画像添付のアップロード: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
 import {
-  useMutation as useColadaMutation
+  useMutation as useColadaMutation,
+  useQuery as useColadaQuery
 } from '@pinia/colada';
 import type {
+  DefineQueryOptions,
   UseMutationOptions
 } from '@pinia/colada';
 
+import {
+  toValue as toColadaValue
+} from 'vue';
+import type {
+  MaybeRefOrGetter
+} from 'vue';
+
 import type {
   AuthUser,
+  MyTask,
   UpdateMeRequest,
   UploadAvatarRequest
 } from '../models';
@@ -122,6 +133,34 @@ export function useDeleteMe<TError = globalThis.Error, TContext extends Record<s
   return useColadaMutation(getDeleteMeMutationOptions(coladaOptions));
 }
 /**
+ * 自分が担当者で `status` が `open`、タスクが未アーカイブ、所属プロジェクトが進行中、かつ自分がそのプロジェクトのメンバーであるタスク。
+ * `endDate` の昇順（`null` は最後）、同順位は作成日時の昇順。
+ * @summary 自分が担当している未完了タスクの一覧を取得する
+ */
+export const listMyTasks = (
+
+ options?: SecondParameter<typeof customInstance<MyTask[]>>,) => {
+      return customInstance<MyTask[]>(
+      {url: `/api/me/tasks`, method: 'GET'
+    },
+      options);
+    }
+
+export const getListMyTasksQueryKey = () => ["get", "/api/me/tasks"] as const;
+
+export function getListMyTasksQueryOptions<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listMyTasks>> | undefined = undefined>(coladaOptions?: { query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listMyTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listMyTasks>[0]; }): DefineQueryOptions<Awaited<ReturnType<typeof listMyTasks>>, TError, TInitial> {
+  const coladaRequest = listMyTasks;
+  return {
+    key: getListMyTasksQueryKey(),
+    ...coladaOptions?.query,
+    query: ({ signal: coladaSignal }) => coladaRequest({ ...coladaOptions?.request, signal: coladaSignal }),
+  };
+}
+
+export function useListMyTasks<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listMyTasks>> | undefined = undefined>(coladaOptions?: MaybeRefOrGetter<{ query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listMyTasks>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listMyTasks>[0]; }>) {
+  return useColadaQuery(() => getListMyTasksQueryOptions(toColadaValue(coladaOptions)));
+}
+/**
  * `multipart/form-data` の `file` フィールドで送る。PNG / JPEG / WebP、100 KiB 以下、幅・高さとも 256px 以下。
  * 画像ヘッダーから寸法を読むため、ヘッダーが読めない画像も `image_too_large` になる。
  * アップロードごとに新しい URL になり、以前の画像は削除される。
@@ -180,5 +219,6 @@ export function useRemoveAvatar<TError = globalThis.Error, TContext extends Reco
 }
 export type UpdateMeResult = NonNullable<Awaited<ReturnType<typeof updateMe>>>
 export type DeleteMeResult = NonNullable<Awaited<ReturnType<typeof deleteMe>>>
+export type ListMyTasksResult = NonNullable<Awaited<ReturnType<typeof listMyTasks>>>
 export type UploadAvatarResult = NonNullable<Awaited<ReturnType<typeof uploadAvatar>>>
 export type RemoveAvatarResult = NonNullable<Awaited<ReturnType<typeof removeAvatar>>>

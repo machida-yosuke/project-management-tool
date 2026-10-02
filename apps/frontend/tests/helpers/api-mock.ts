@@ -131,6 +131,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     description: emptyRichTextDoc(),
     ownerId: alice.id,
     role: 'admin',
+    archivedAt: null,
     createdAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };

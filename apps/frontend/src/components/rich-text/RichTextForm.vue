@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { emptyRichTextDoc, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
+import { computed, nextTick, ref } from 'vue';
+import { isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
 import { errorMessage } from '../../lib/api';
 import { useDraft } from '../../lib/drafts';
 import { prepareErrorMessage, prepareRichTextDoc } from '../../lib/rich-text-upload';
@@ -55,8 +55,12 @@ async function onSubmit() {
       error.value = errorMessage(e, props.errorMessages, props.submitErrorFallback);
       return;
     }
+    if (!props.cancelable) {
+      doc.value = props.initialDoc;
+      // The reset schedules a draft save; let it schedule first so discard() cancels it.
+      await nextTick();
+    }
     discard();
-    if (!props.cancelable) doc.value = emptyRichTextDoc();
     emit('submitted');
   } finally {
     submitting.value = false;

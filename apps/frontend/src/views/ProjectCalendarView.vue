@@ -2,15 +2,24 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { canEdit } from '@pm-tool/shared';
-import { useGetProject, useListTasks, useUpdateTask } from '../api/generated';
+import {
+  useGetProject,
+  useListLabels,
+  useListMembers,
+  useListTasks,
+  useUpdateTask,
+} from '../api/generated';
 import TimelineGrid from '../components/calendar/TimelineGrid.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
 import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
+import TaskFilterBar from '../components/task/TaskFilterBar.vue';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import type { DateRange } from '../lib/calendar-drag';
+import { TASK_ARCHIVE_HELP } from '../lib/help-texts';
 import {
   addDays,
   addMonths,
@@ -24,6 +33,13 @@ import {
   type DateString,
 } from '../lib/dates';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import {
+  applyTaskFilters,
+  filtersFromQuery,
+  sortFromQuery,
+  withTaskQuery,
+  type TaskFilters,
+} from '../lib/task-filters';
 
 type ViewMode = 'month' | 'week';
 
@@ -35,6 +51,7 @@ const projectId = computed(() => String(route.params.projectId));
 const today = ref(todayString());
 const viewMode = ref<ViewMode>('month');
 const showArchived = ref(false);
+const archivedHelpOpen = ref(false);
 const dateOverrides = reactive<Record<string, DateRange>>({});
 const actionError = ref('');
 
@@ -68,8 +85,15 @@ const tasksQuery = useListTasks(projectId, () =>
   showArchived.value ? { includeArchived: true } : undefined,
 );
 
+const membersQuery = useListMembers(projectId);
+const labelsQuery = useListLabels(projectId);
+
 const project = computed(() => projectQuery.data.value ?? null);
-const tasks = computed(() => tasksQuery.data.value ?? []);
+const members = computed(() => membersQuery.data.value ?? []);
+const labels = computed(() => labelsQuery.data.value ?? []);
+// The calendar only offers assignee and label filters, so a `due` carried in the URL is ignored.
+const filters = computed<TaskFilters>(() => ({ ...filtersFromQuery(route.query), due: 'all' }));
+const tasks = computed(() => applyTaskFilters(tasksQuery.data.value ?? [], filters.value));
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
 
 const firstLoadError = computed(() => projectQuery.error.value ?? tasksQuery.error.value);
@@ -101,6 +125,10 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
 function navigate(date: DateString) {
   baseDate.value = date;
   return router.replace({ query: { ...route.query, date } });
+}
+
+function updateFilters(next: TaskFilters) {
+  return router.replace({ query: withTaskQuery(route.query, next, sortFromQuery(route.query)) });
 }
 
 function goPrevious() {
@@ -183,16 +211,37 @@ async function commitDates({ taskId, startDate, endDate }: { taskId: string } & 
               週
             </Button>
           </div>
-          <div class="flex items-center gap-2">
-            <Checkbox
-              id="calendar-show-archived"
-              :model-value="showArchived"
-              @update:model-value="showArchived = $event === true"
-            />
-            <Label for="calendar-show-archived">アーカイブを表示</Label>
-          </div>
+          <!-- Focus does not bubble, so reka-ui's focus handler on this wrapper never sees the checkbox; track focusin/out instead. -->
+          <TooltipProvider>
+            <Tooltip v-model:open="archivedHelpOpen">
+              <TooltipTrigger as-child>
+                <div
+                  class="flex items-center gap-2"
+                  @focusin="archivedHelpOpen = true"
+                  @focusout="archivedHelpOpen = false"
+                >
+                  <Checkbox
+                    id="calendar-show-archived"
+                    :model-value="showArchived"
+                    @update:model-value="showArchived = $event === true"
+                  />
+                  <Label for="calendar-show-archived">アーカイブ済みも表示</Label>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent class="max-w-xs">{{ TASK_ARCHIVE_HELP }}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
+
+      <TaskFilterBar
+        class="mb-4"
+        :filters="filters"
+        :members="members"
+        :labels="labels"
+        :show-due="false"
+        @update:filters="updateFilters"
+      />
 
       <!-- TimelineGrid draws its own border; the wrapper owns the frame instead. -->
       <div class="overflow-hidden rounded-lg border *:rounded-none *:border-0">

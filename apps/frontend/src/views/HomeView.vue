@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { emptyRichTextDoc, richTextDocToPlainText, type RichTextDoc } from '@pm-tool/shared';
+import { ChevronRight } from '@lucide/vue';
+import { richTextDocToPlainText, type RichTextDoc } from '@pm-tool/shared';
 import {
   getListMyInvitationsQueryKey,
   getListProjectsQueryKey,
   useAcceptInvitation,
   useCreateProject,
   useListMyInvitations,
+  useListMyTasks,
   useListProjects,
 } from '../api/generated';
+import type { MyTask } from '../api/generated/models';
 import UserAvatar from '../components/UserAvatar.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import PageHeader from '../components/layout/PageHeader.vue';
@@ -34,9 +37,13 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import RichTextForm from '../components/rich-text/RichTextForm.vue';
+import TaskLabelPill from '../components/task/TaskLabelPill.vue';
+import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import { errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
+import { dueStateClass } from '../lib/due-state';
 import { useInvalidate } from '../lib/query';
+import { projectDescriptionTemplate } from '../lib/rich-text-templates';
 import { ROLE_LABELS } from '../lib/roles';
 
 const router = useRouter();
@@ -44,9 +51,21 @@ const invalidate = useInvalidate();
 
 const { data: projects, error: projectsError } = useListProjects();
 const { data: invitations, error: invitationsError } = useListMyInvitations();
+// Task edits elsewhere do not invalidate this list, so refetch whenever home is shown again.
+const { data: myTasks, error: myTasksError } = useListMyTasks({ query: { staleTime: 0 } });
+
+const activeProjects = computed(() => (projects.value ?? []).filter((p) => p.archivedAt === null));
+const archivedProjects = computed(() =>
+  (projects.value ?? []).filter((p) => p.archivedAt !== null),
+);
+const archivedOpen = ref(false);
+
+function taskPeriod(task: MyTask) {
+  return `${task.startDate ?? ''} 〜 ${task.endDate ?? ''}`.trim();
+}
 
 const loadError = computed(() => {
-  const e = projectsError.value ?? invitationsError.value;
+  const e = projectsError.value ?? invitationsError.value ?? myTasksError.value;
   return e ? errorMessage(e, {}, '読み込みに失敗しました') : '';
 });
 
@@ -127,7 +146,7 @@ async function acceptInvitation(invitationId: string) {
               data-testid="create-project"
               :project-id="null"
               :draft-key="draftKeys.newProject()"
-              :initial-doc="emptyRichTextDoc()"
+              :initial-doc="projectDescriptionTemplate()"
               label="プロジェクトの説明"
               placeholder="説明（任意）"
               submit-label="作成"
@@ -213,14 +232,46 @@ async function acceptInvitation(invitationId: string) {
         </ul>
       </section>
 
+      <section aria-labelledby="my-tasks-heading">
+        <h2 id="my-tasks-heading" class="mb-3 text-lg font-semibold">自分のタスク</h2>
+        <EmptyState v-if="!myTasks || myTasks.length === 0" message="担当中のタスクはありません" />
+        <ul v-else class="divide-y rounded-lg border" data-testid="my-tasks">
+          <li v-for="task in myTasks" :key="task.id">
+            <router-link
+              :to="{ name: 'task', params: { projectId: task.project.id, taskId: task.id } }"
+              class="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              data-testid="my-task"
+            >
+              <TaskStateIcon class="mt-0.5" :status="task.status" />
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span class="min-w-0 font-semibold break-words">{{ task.title }}</span>
+                  <TaskLabelPill v-if="task.label" :label="task.label" />
+                </div>
+                <p class="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                  <span data-testid="my-task-project">{{ task.project.name }}</span>
+                  <span
+                    v-if="task.startDate || task.endDate"
+                    :class="dueStateClass(task.endDate, task.status)"
+                    data-testid="my-task-period"
+                  >
+                    {{ taskPeriod(task) }}
+                  </span>
+                </p>
+              </div>
+            </router-link>
+          </li>
+        </ul>
+      </section>
+
       <section>
         <h2 class="mb-3 text-lg font-semibold">プロジェクト</h2>
         <EmptyState
-          v-if="!projects || projects.length === 0"
+          v-if="activeProjects.length === 0"
           message="参加しているプロジェクトはありません"
         />
         <ul v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="projects">
-          <li v-for="project in projects" :key="project.id">
+          <li v-for="project in activeProjects" :key="project.id">
             <router-link
               :to="{ name: 'project', params: { projectId: project.id } }"
               class="group block h-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -229,6 +280,53 @@ async function acceptInvitation(invitationId: string) {
                 <CardHeader class="px-4">
                   <CardTitle class="truncate">{{ project.name }}</CardTitle>
                   <CardAction>
+                    <Badge variant="info">{{ ROLE_LABELS[project.role] }}</Badge>
+                  </CardAction>
+                </CardHeader>
+                <CardContent class="px-4">
+                  <p class="line-clamp-2 text-sm text-muted-foreground">
+                    {{ richTextDocToPlainText(project.description) || '説明はありません' }}
+                  </p>
+                </CardContent>
+              </Card>
+            </router-link>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="archivedProjects.length > 0">
+        <Button
+          type="button"
+          variant="ghost"
+          class="-ml-3 mb-3 text-lg font-semibold"
+          :aria-expanded="archivedOpen"
+          aria-controls="archived-projects"
+          data-testid="archived-toggle"
+          @click="archivedOpen = !archivedOpen"
+        >
+          <ChevronRight
+            aria-hidden="true"
+            class="transition-transform"
+            :class="archivedOpen ? 'rotate-90' : ''"
+          />
+          完了したプロジェクト {{ archivedProjects.length }}
+        </Button>
+        <ul
+          v-if="archivedOpen"
+          id="archived-projects"
+          class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          data-testid="archived-projects"
+        >
+          <li v-for="project in archivedProjects" :key="project.id">
+            <router-link
+              :to="{ name: 'project', params: { projectId: project.id } }"
+              class="group block h-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <Card class="h-full gap-2 py-4 transition-colors group-hover:bg-muted/50">
+                <CardHeader class="px-4">
+                  <CardTitle class="truncate">{{ project.name }}</CardTitle>
+                  <CardAction class="flex gap-1">
+                    <Badge variant="secondary">完了</Badge>
                     <Badge variant="info">{{ ROLE_LABELS[project.role] }}</Badge>
                   </CardAction>
                 </CardHeader>

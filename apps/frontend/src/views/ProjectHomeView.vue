@@ -12,6 +12,7 @@ import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
 import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
+import ProjectOverview from '../components/layout/ProjectOverview.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { addDays, startOfWeek, todayString, type DateString } from '../lib/dates';
 import { dueStateClass } from '../lib/due-state';
@@ -78,6 +79,7 @@ function taskPeriod(task: Task) {
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />
+      <ProjectOverview :project="project" />
 
       <div class="grid gap-8 lg:grid-cols-2">
         <section class="min-w-0 space-y-3" aria-labelledby="week-tasks-heading">

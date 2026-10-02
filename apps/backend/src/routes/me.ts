@@ -10,6 +10,7 @@ import { onValidationError } from '../middleware/validation';
 import { MULTIPART_OVERHEAD_BYTES } from '../middleware/upload';
 import { AVATAR_CONTENT_TYPES, MAX_AVATAR_BYTES, MAX_AVATAR_DIMENSION } from '../users/avatar';
 import { readImageDimensions } from '../users/image-dimensions';
+import { listMyTasks } from '../projects/tasks';
 import {
   deleteAccount,
   findDeletionBlockers,
@@ -21,6 +22,9 @@ import {
 const updateSchema = z.object({ name: z.string().trim().min(1).max(100) });
 
 export const meRoute = new Hono<AuthEnv>()
+  .get('/tasks', async (c) => {
+    return c.json(await listMyTasks(c.env.DB, c.get('user').id));
+  })
   .patch('/', zValidator('json', updateSchema, onValidationError), async (c) => {
     return c.json(await updateName(c.env.DB, c.get('user').id, c.req.valid('json').name));
   })

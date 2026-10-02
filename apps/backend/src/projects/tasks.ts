@@ -1,9 +1,15 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/sqlite-core';
+import { alias, type SelectedFields } from 'drizzle-orm/sqlite-core';
 import type { D1Database } from '@cloudflare/workers-types';
-import { emptyRichTextDoc, type Task, type TaskStatus, type UserSummary } from '@pm-tool/shared';
-import { taskLabels, tasks, users } from '../db/schema';
+import {
+  emptyRichTextDoc,
+  type MyTask,
+  type Task,
+  type TaskStatus,
+  type UserSummary,
+} from '@pm-tool/shared';
+import { projectMembers, projects, taskLabels, tasks, users } from '../db/schema';
 import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
 import { findLabel, toLabel } from './labels';
@@ -13,31 +19,38 @@ import { deserializeRichText, serializeRichText } from './rich-text';
 const assignee = alias(users, 'assignee');
 const creator = alias(users, 'creator');
 
-function taskQuery(db: D1Database) {
+const taskFields = {
+  task: tasks,
+  assignee: {
+    id: assignee.id,
+    email: assignee.email,
+    name: assignee.name,
+    avatarKey: assignee.avatarKey,
+  },
+  createdBy: {
+    id: creator.id,
+    email: creator.email,
+    name: creator.name,
+    avatarKey: creator.avatarKey,
+  },
+  label: taskLabels,
+};
+
+function taskQuery<Extra extends SelectedFields = Record<never, never>>(
+  db: D1Database,
+  extra?: Extra,
+) {
   return drizzle(db)
-    .select({
-      task: tasks,
-      assignee: {
-        id: assignee.id,
-        email: assignee.email,
-        name: assignee.name,
-        avatarKey: assignee.avatarKey,
-      },
-      createdBy: {
-        id: creator.id,
-        email: creator.email,
-        name: creator.name,
-        avatarKey: creator.avatarKey,
-      },
-      label: taskLabels,
-    })
+    .select({ ...taskFields, ...(extra as Extra) })
     .from(tasks)
     .leftJoin(assignee, eq(assignee.id, tasks.assigneeId))
     .leftJoin(taskLabels, eq(taskLabels.id, tasks.labelId))
     .innerJoin(creator, eq(creator.id, tasks.createdBy));
 }
 
-type TaskRow = Awaited<ReturnType<ReturnType<typeof taskQuery>['all']>>[number];
+type TaskRow = Awaited<
+  ReturnType<ReturnType<typeof taskQuery<Record<never, never>>>['all']>
+>[number];
 
 function toUserSummary(user: TaskRow['createdBy']): UserSummary {
   return {
@@ -81,6 +94,30 @@ export async function listTasks(
     )
     .orderBy(asc(tasks.createdAt), asc(sql`${tasks}.rowid`));
   return rows.map(toTask);
+}
+
+export async function listMyTasks(db: D1Database, userId: string): Promise<MyTask[]> {
+  const rows = await taskQuery(db, { project: { id: projects.id, name: projects.name } })
+    .innerJoin(projects, eq(projects.id, tasks.projectId))
+    .innerJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, tasks.projectId), eq(projectMembers.userId, userId)),
+    )
+    .where(
+      and(
+        eq(tasks.assigneeId, userId),
+        eq(tasks.status, 'open'),
+        isNull(tasks.archivedAt),
+        isNull(projects.archivedAt),
+      ),
+    )
+    .orderBy(
+      sql`${tasks.endDate} IS NULL`,
+      asc(tasks.endDate),
+      asc(tasks.createdAt),
+      asc(sql`${tasks}.rowid`),
+    );
+  return rows.map((row) => ({ ...toTask(row), project: row.project }));
 }
 
 export async function getTask(db: D1Database, projectId: string, taskId: string): Promise<Task> {

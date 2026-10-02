@@ -80,7 +80,7 @@ describe('SettingsView', () => {
     const [req] = fetchMock.mock.calls[0] ?? [];
     expect(req).toMatchObject({ method: 'PATCH', path: '/api/me', body: { name: 'Alicia' } });
     expect(useAuthStore(pinia).user?.name).toBe('Alicia');
-    expect(wrapper.get('[role="status"]').text()).toBe('名前を更新しました');
+    expect(wrapper.get('[role="status"]').text()).toBe('名前を保存しました');
   });
 
   it('shows a validation message when the name is rejected', async () => {

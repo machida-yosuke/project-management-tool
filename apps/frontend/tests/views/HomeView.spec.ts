@@ -1,16 +1,33 @@
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  emptyRichTextDoc,
   plainTextToRichTextDoc,
+  type MyTask,
   type Project,
   type ProjectInvitation,
 } from '@pm-tool/shared';
+import { projectDescriptionTemplate } from '../../src/lib/rich-text-templates';
 import HomeView from '../../src/views/HomeView.vue';
-import { bob, json, makeInvitation, makeProject, stubApi } from '../helpers/api-mock';
+import {
+  bob,
+  json,
+  makeInvitation,
+  makeLabel,
+  makeProject,
+  makeTask,
+  stubApi,
+} from '../helpers/api-mock';
 import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
-import { editorFor, typeInto } from '../helpers/rich-text';
+import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
+
+function makeMyTask(overrides: Partial<MyTask> = {}): MyTask {
+  return {
+    ...makeTask({ assignee: bob }),
+    project: { id: 'p1', name: 'Project One' },
+    ...overrides,
+  };
+}
 
 async function clickOutside() {
   document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -29,6 +46,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json([makeProject()]),
       'GET /api/invitations': json([makeInvitation()]),
+      'GET /api/me/tasks': json([]),
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
@@ -47,6 +65,7 @@ describe('HomeView', () => {
         makeProject({ id: 'p2', name: 'Bare', role: 'staff' }),
       ]),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
@@ -62,6 +81,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
@@ -75,6 +95,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json({ error: 'internal_error' }, 500),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
     });
 
     const { wrapper } = await mountAt(HomeView, '/', bob);
@@ -88,6 +109,7 @@ describe('HomeView', () => {
     const requests = stubApi({
       'GET /api/projects': () => json(projects),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
       'POST /api/projects': () => {
         projects = [created];
         return json(created, 201);
@@ -103,7 +125,7 @@ describe('HomeView', () => {
     await flushPromises();
 
     const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
-    expect(post?.body).toEqual({ name: 'New project', description: emptyRichTextDoc() });
+    expect(post?.body).toEqual({ name: 'New project', description: projectDescriptionTemplate() });
     expect(currentDialog()).toBeNull();
     expect(wrapper.get('[data-testid="projects"]').text()).toContain('New project');
     const reopened = await openDialog(wrapper, 'プロジェクトを作成');
@@ -114,6 +136,7 @@ describe('HomeView', () => {
     const requests = stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
       'POST /api/projects': json(makeProject({ id: 'p9' }), 201),
     });
 
@@ -123,7 +146,7 @@ describe('HomeView', () => {
     );
     expect(form.find('button[aria-label="画像を挿入"]').exists()).toBe(false);
     await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
-    await typeInto(form, 'プロジェクトの説明', 'line 1');
+    await replaceContent(form, 'プロジェクトの説明', 'line 1');
     editorFor(form, 'プロジェクトの説明').commands.splitBlock();
     await typeInto(form, 'プロジェクトの説明', 'line 2');
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -144,7 +167,9 @@ describe('HomeView', () => {
     expect(localStorage.getItem('draft:project:new')).toBeNull();
     const reopened = await openDialog(wrapper, 'プロジェクトを作成');
     expect(inputValue(reopened.get('input[aria-label="プロジェクト名"]'))).toBe('');
-    expect(editorFor(reopened, 'プロジェクトの説明').isEmpty).toBe(true);
+    expect(editorFor(reopened, 'プロジェクトの説明').getJSON()).toEqual(
+      projectDescriptionTemplate(),
+    );
   });
 
   it.each([
@@ -154,6 +179,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
       'POST /api/projects': json({ error: code }, status),
     });
 
@@ -162,7 +188,7 @@ describe('HomeView', () => {
       '[data-testid="create-project"]',
     );
     await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
-    await typeInto(form, 'プロジェクトの説明', 'keep me');
+    await replaceContent(form, 'プロジェクトの説明', 'keep me');
     await form.trigger('submit');
     await flushPromises();
 
@@ -179,6 +205,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
       'POST /api/projects': () => new Promise<Response>((resolve) => (respond = resolve)),
     });
 
@@ -203,6 +230,7 @@ describe('HomeView', () => {
     const requests = stubApi({
       'GET /api/projects': () => json(projects),
       'GET /api/invitations': () => json(invitations),
+      'GET /api/me/tasks': json([]),
       'POST /api/invitations/inv1/accept': () => {
         projects = [joined];
         invitations = [];
@@ -232,6 +260,7 @@ describe('HomeView', () => {
     stubApi({
       'GET /api/projects': json([]),
       'GET /api/invitations': json([makeInvitation()]),
+      'GET /api/me/tasks': json([]),
       'POST /api/invitations/inv1/accept': json({ error: code }, status),
     });
 
@@ -242,5 +271,109 @@ describe('HomeView', () => {
 
     expect(wrapper.get('[data-testid="invitation"] [role="alert"]').text()).toContain(message);
     expect(router.currentRoute.value.fullPath).toBe('/');
+  });
+
+  it('lists my tasks with project, period and label, linking to the task', async () => {
+    stubApi({
+      'GET /api/projects': json([makeProject()]),
+      'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([
+        makeMyTask({
+          id: 't1',
+          title: 'Overdue task',
+          startDate: '2020-01-01',
+          endDate: '2020-01-02',
+          label: makeLabel(),
+        }),
+        makeMyTask({
+          id: 't2',
+          projectId: 'p2',
+          title: 'Undated task',
+          project: { id: 'p2', name: 'Other project' },
+        }),
+      ]),
+    });
+
+    const { wrapper, router } = await mountAt(HomeView, '/', bob);
+
+    const rows = wrapper.findAll('[data-testid="my-task"]');
+    expect(rows.map((row) => row.attributes('href'))).toEqual([
+      '/projects/p1/tasks/t1',
+      '/projects/p2/tasks/t2',
+    ]);
+    expect(rows[0]?.text()).toContain('Overdue task');
+    expect(rows[0]?.text()).toContain('バグ報告');
+    expect(rows[0]?.get('[data-testid="my-task-project"]').text()).toBe('Project One');
+    const period = rows[0]?.get('[data-testid="my-task-period"]');
+    expect(period?.text()).toBe('2020-01-01 〜 2020-01-02');
+    expect(period?.classes()).toContain('text-destructive');
+    expect(rows[0]?.find('[role="img"][aria-label="未完了"]').exists()).toBe(true);
+    expect(rows[1]?.get('[data-testid="my-task-project"]').text()).toBe('Other project');
+    expect(rows[1]?.find('[data-testid="my-task-period"]').exists()).toBe(false);
+
+    await rows[1]?.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe('/projects/p2/tasks/t2');
+  });
+
+  it('shows an empty state when no tasks are assigned', async () => {
+    stubApi({
+      'GET /api/projects': json([]),
+      'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+
+    expect(wrapper.find('[data-testid="my-tasks"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('担当中のタスクはありません');
+  });
+
+  it('puts archived projects in a collapsed section with a badge', async () => {
+    stubApi({
+      'GET /api/projects': json([
+        makeProject({ id: 'p1', name: 'Done one', archivedAt: '2026-09-20T00:00:00.000Z' }),
+        makeProject({ id: 'p2', name: 'Active' }),
+        makeProject({ id: 'p3', name: 'Done two', archivedAt: '2026-09-21T00:00:00.000Z' }),
+      ]),
+      'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+
+    const active = wrapper.findAll('[data-testid="projects"] a');
+    expect(active.map((a) => a.attributes('href'))).toEqual(['/projects/p2']);
+    expect(active[0]?.text()).not.toContain('完了');
+
+    const toggle = wrapper.get('[data-testid="archived-toggle"]');
+    expect(toggle.text()).toContain('完了したプロジェクト 2');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[data-testid="archived-projects"]').exists()).toBe(false);
+
+    await toggle.trigger('click');
+
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    const archived = wrapper.findAll('[data-testid="archived-projects"] a');
+    expect(archived.map((a) => a.attributes('href'))).toEqual(['/projects/p1', '/projects/p3']);
+    expect(archived.every((a) => a.text().includes('完了'))).toBe(true);
+  });
+
+  it('shows the active empty state when every project is archived', async () => {
+    stubApi({
+      'GET /api/projects': json([
+        makeProject({ id: 'p1', archivedAt: '2026-09-20T00:00:00.000Z' }),
+      ]),
+      'GET /api/invitations': json([]),
+      'GET /api/me/tasks': json([]),
+    });
+
+    const { wrapper } = await mountAt(HomeView, '/', bob);
+
+    expect(wrapper.find('[data-testid="projects"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('参加しているプロジェクトはありません');
+    expect(wrapper.get('[data-testid="archived-toggle"]').text()).toContain(
+      '完了したプロジェクト 1',
+    );
   });
 });
