@@ -132,16 +132,16 @@ describe('resizeAttachment', () => {
     vi.restoreAllMocks();
   });
 
-  it('scales the long side down to 1600px and encodes WebP at 0.8', async () => {
+  it('scales the long side down to 1000px and encodes WebP at 0.8', async () => {
     const { ctx, encoded } = stubCanvas(['image/webp']);
-    const { bitmap, create } = stubBitmap(3200, 1000);
+    const { bitmap, create } = stubBitmap(2000, 1000);
 
     const result = await resizeAttachment(source);
 
     expect(create).toHaveBeenCalledWith(source, { imageOrientation: 'from-image' });
-    expect(ctx.drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 1600, 500);
+    expect(ctx.drawImage).toHaveBeenCalledWith(bitmap, 0, 0, 1000, 500);
     expect(bitmap.close).toHaveBeenCalled();
-    expect(encoded).toEqual([{ type: 'image/webp', quality: 0.8, width: 1600, height: 500 }]);
+    expect(encoded).toEqual([{ type: 'image/webp', quality: 0.8, width: 1000, height: 500 }]);
     expect(result.type).toBe('image/webp');
   });
 
@@ -173,7 +173,7 @@ describe('resizeAttachment', () => {
 
   it('lowers the quality down to 0.6 and then gives up', async () => {
     const { encoded } = stubCanvas(['image/webp'], () => 512_001);
-    stubBitmap(1600, 1600);
+    stubBitmap(1000, 1000);
 
     await expect(resizeAttachment(source)).rejects.toBeInstanceOf(AttachmentTooLargeError);
     expect(encoded.map((e) => e.quality)).toEqual([0.8, 0.7, 0.6]);
