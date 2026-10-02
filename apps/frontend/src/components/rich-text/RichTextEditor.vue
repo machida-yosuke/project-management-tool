@@ -405,7 +405,10 @@ const currentBlockStyle = computed(() => {
         </template>
       </div>
     </TooltipProvider>
-    <div class="relative flex min-h-[9em] resize-y flex-col overflow-auto">
+    <!-- Inside a dialog the editor is capped so long content scrolls here instead of pushing the dialog off-screen. -->
+    <div
+      class="relative flex min-h-[9em] resize-y flex-col overflow-auto in-data-[slot=dialog-content]:max-h-[50svh]"
+    >
       <p
         v-if="placeholder && editor?.isEmpty"
         class="placeholder pointer-events-none absolute inset-0 p-2 text-muted-foreground"
