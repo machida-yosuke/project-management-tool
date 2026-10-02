@@ -1,11 +1,12 @@
 import { enableAutoUnmount, flushPromises, type DOMWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { plainTextToRichTextDoc, type ProjectRole, type Task } from '@pm-tool/shared';
+import { taskDescriptionTemplate } from '../../src/lib/rich-text-templates';
 import ProjectView from '../../src/views/ProjectView.vue';
 import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
 import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
-import { editorFor, typeInto } from '../helpers/rich-text';
+import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
 
 const INCLUDE_ARCHIVED = '[role="checkbox"]#include-archived';
 
@@ -236,7 +237,7 @@ describe('ProjectView', () => {
 
     const calls = requests.mock.calls.map(([req]) => req);
     expect(calls.filter((req) => req.method === 'POST').map((req) => req.body)).toEqual([
-      { title: 'New task' },
+      { title: 'New task', description: taskDescriptionTemplate() },
     ]);
     expect(calls.filter((req) => req.method === 'PATCH')).toEqual([]);
   });
@@ -256,7 +257,7 @@ describe('ProjectView', () => {
     const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const form = (await openDialog(wrapper, 'タスクを作成')).get('[data-testid="create-task"]');
     await form.get('input[aria-label="タスクのタイトル"]').setValue(' New task ');
-    await typeInto(form, 'タスクの本文', 'Task body');
+    await replaceContent(form, 'タスクの本文', 'Task body');
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(localStorage.getItem('draft:project:p1:new-task')).not.toBeNull();
 
@@ -274,7 +275,7 @@ describe('ProjectView', () => {
     expect(localStorage.getItem('draft:project:p1:new-task')).toBeNull();
     const reopened = await openDialog(wrapper, 'タスクを作成');
     expect(inputValue(reopened.get('input[aria-label="タスクのタイトル"]'))).toBe('');
-    expect(editorFor(reopened, 'タスクの本文').isEmpty).toBe(true);
+    expect(editorFor(reopened, 'タスクの本文').getJSON()).toEqual(taskDescriptionTemplate());
     expect(
       wrapper.findAll('[data-testid="task"]').map((t) => t.get('[data-testid="task-open"]').text()),
     ).toEqual(['Write spec', 'New task']);
@@ -316,7 +317,7 @@ describe('ProjectView', () => {
     const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', alice);
     const dialog = await openDialog(wrapper, 'タスクを作成');
     await dialog.get('input[aria-label="タスクのタイトル"]').setValue('Half done');
-    await typeInto(dialog, 'タスクの本文', 'Unsent body');
+    await replaceContent(dialog, 'タスクの本文', 'Unsent body');
     await findButton(dialog, '閉じる').trigger('click');
     await flushPromises();
     expect(currentDialog()).toBeNull();

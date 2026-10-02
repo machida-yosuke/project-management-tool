@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { emptyRichTextDoc, richTextDocToPlainText, type RichTextDoc } from '@pm-tool/shared';
+import { richTextDocToPlainText, type RichTextDoc } from '@pm-tool/shared';
 import {
   getListMyInvitationsQueryKey,
   getListProjectsQueryKey,
@@ -37,6 +37,7 @@ import RichTextForm from '../components/rich-text/RichTextForm.vue';
 import { errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
 import { useInvalidate } from '../lib/query';
+import { projectDescriptionTemplate } from '../lib/rich-text-templates';
 import { ROLE_LABELS } from '../lib/roles';
 
 const router = useRouter();
@@ -127,7 +128,7 @@ async function acceptInvitation(invitationId: string) {
               data-testid="create-project"
               :project-id="null"
               :draft-key="draftKeys.newProject()"
-              :initial-doc="emptyRichTextDoc()"
+              :initial-doc="projectDescriptionTemplate()"
               label="プロジェクトの説明"
               placeholder="説明（任意）"
               submit-label="作成"

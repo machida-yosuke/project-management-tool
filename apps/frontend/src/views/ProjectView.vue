@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import { canEdit, emptyRichTextDoc, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
+import { canEdit, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
 import { CircleCheck, CircleDot } from '@lucide/vue';
 import { useCreateTask, useGetProject, useListTasks } from '../api/generated';
 import type { Task, TaskStatus } from '../api/generated/models';
@@ -28,6 +28,7 @@ import { ApiRequestError, errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
 import { dueStateClass } from '../lib/due-state';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import { taskDescriptionTemplate } from '../lib/rich-text-templates';
 
 const route = useRoute();
 const invalidate = useInvalidate();
@@ -127,7 +128,7 @@ function taskPeriod(task: Task) {
                 data-testid="create-task"
                 :project-id="projectId"
                 :draft-key="draftKeys.newTask(projectId)"
-                :initial-doc="emptyRichTextDoc()"
+                :initial-doc="taskDescriptionTemplate()"
                 label="タスクの本文"
                 placeholder="本文（任意）"
                 submit-label="追加"

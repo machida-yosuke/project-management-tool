@@ -1,16 +1,12 @@
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  emptyRichTextDoc,
-  plainTextToRichTextDoc,
-  type Project,
-  type ProjectInvitation,
-} from '@pm-tool/shared';
+import { plainTextToRichTextDoc, type Project, type ProjectInvitation } from '@pm-tool/shared';
+import { projectDescriptionTemplate } from '../../src/lib/rich-text-templates';
 import HomeView from '../../src/views/HomeView.vue';
 import { bob, json, makeInvitation, makeProject, stubApi } from '../helpers/api-mock';
 import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
-import { editorFor, typeInto } from '../helpers/rich-text';
+import { editorFor, replaceContent, typeInto } from '../helpers/rich-text';
 
 async function clickOutside() {
   document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -103,7 +99,7 @@ describe('HomeView', () => {
     await flushPromises();
 
     const post = requests.mock.calls.map(([req]) => req).find((req) => req.method === 'POST');
-    expect(post?.body).toEqual({ name: 'New project', description: emptyRichTextDoc() });
+    expect(post?.body).toEqual({ name: 'New project', description: projectDescriptionTemplate() });
     expect(currentDialog()).toBeNull();
     expect(wrapper.get('[data-testid="projects"]').text()).toContain('New project');
     const reopened = await openDialog(wrapper, 'プロジェクトを作成');
@@ -123,7 +119,7 @@ describe('HomeView', () => {
     );
     expect(form.find('button[aria-label="画像を挿入"]').exists()).toBe(false);
     await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
-    await typeInto(form, 'プロジェクトの説明', 'line 1');
+    await replaceContent(form, 'プロジェクトの説明', 'line 1');
     editorFor(form, 'プロジェクトの説明').commands.splitBlock();
     await typeInto(form, 'プロジェクトの説明', 'line 2');
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -144,7 +140,9 @@ describe('HomeView', () => {
     expect(localStorage.getItem('draft:project:new')).toBeNull();
     const reopened = await openDialog(wrapper, 'プロジェクトを作成');
     expect(inputValue(reopened.get('input[aria-label="プロジェクト名"]'))).toBe('');
-    expect(editorFor(reopened, 'プロジェクトの説明').isEmpty).toBe(true);
+    expect(editorFor(reopened, 'プロジェクトの説明').getJSON()).toEqual(
+      projectDescriptionTemplate(),
+    );
   });
 
   it.each([
@@ -162,7 +160,7 @@ describe('HomeView', () => {
       '[data-testid="create-project"]',
     );
     await form.get('input[aria-label="プロジェクト名"]').setValue('New project');
-    await typeInto(form, 'プロジェクトの説明', 'keep me');
+    await replaceContent(form, 'プロジェクトの説明', 'keep me');
     await form.trigger('submit');
     await flushPromises();
 
