@@ -348,6 +348,55 @@ describe('TaskDetailView', () => {
     );
   });
 
+  it('shows the new assignee and label while the PATCH is pending', async () => {
+    const routes = patchingRoutes('admin', makeTask({ assignee: bob }));
+    const pending: (() => void)[] = [];
+    stubApi({
+      ...routes,
+      'PATCH /api/projects/p1/tasks/t1': (body) =>
+        new Promise<Response>((resolve) => {
+          pending.push(() => resolve(routes['PATCH /api/projects/p1/tasks/t1'](body)));
+        }),
+    });
+
+    const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
+    await chooseOption(wrapper.get(ASSIGNEE_SELECT), '未割り当て');
+    await chooseOption(wrapper.get(LABEL_SELECT), '更新依頼');
+
+    expect(pending).toHaveLength(2);
+    expect(wrapper.get(ASSIGNEE_SELECT).text()).toBe('未割り当て');
+    expect(wrapper.get(LABEL_SELECT).text()).toBe('更新依頼');
+
+    for (const resolve of pending) resolve();
+    await flushPromises();
+    expect(wrapper.get(ASSIGNEE_SELECT).text()).toBe('未割り当て');
+    expect(wrapper.get(LABEL_SELECT).text()).toBe('更新依頼');
+  });
+
+  it.each([
+    ['assignee', ASSIGNEE_SELECT, 'Alice', 'Bob'],
+    ['label', LABEL_SELECT, '更新依頼', 'バグ報告'],
+  ])('reverts the %s when the PATCH fails', async (_field, selector, choice, original) => {
+    let reject!: () => void;
+    stubApi({
+      ...baseRoutes('admin', () => [makeTask({ assignee: bob, label: bugLabel })]),
+      'PATCH /api/projects/p1/tasks/t1': () =>
+        new Promise<Response>((resolve) => {
+          reject = () => resolve(json({ error: 'validation_error', issues: [] }, 400));
+        }),
+    });
+
+    const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
+    await chooseOption(wrapper.get(selector), choice);
+    expect(wrapper.get(selector).text()).toBe(choice);
+
+    reject();
+    await flushPromises();
+
+    expect(wrapper.get(selector).text()).toBe(original);
+    expect(wrapper.get('[role="alert"]').text()).toBe('操作に失敗しました');
+  });
+
   it('renames the task', async () => {
     const requests = stubApi(patchingRoutes('admin', makeTask()));
 
