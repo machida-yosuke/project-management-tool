@@ -95,6 +95,55 @@ describe('CommentThread', () => {
     );
   });
 
+  it('shows nothing but the form when there are no comments', async () => {
+    const wrapper = await mountThread([]);
+
+    expect(wrapper.findAll('[data-testid="comment"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain('コメントはありません');
+    expect(wrapper.get('h2').text()).toBe('コメントする');
+    expect(wrapper.get('[data-testid="create-comment"] button[type="submit"]').text()).toBe(
+      'コメント',
+    );
+  });
+
+  it('renders extra form actions only alongside the new comment form', () => {
+    const slots = { 'form-actions': '<button type="button">完了にする</button>' };
+    const editable = mount(CommentThread, {
+      props: {
+        projectId: 'p1',
+        taskId: 't1',
+        comments: [],
+        commentsError: '',
+        editable: true,
+        currentUserId: alice.id,
+      },
+      slots,
+      global: { plugins: [createPinia(), PiniaColada] },
+    });
+    expect(buttons(editable)).toContain('完了にする');
+    const footer = editable.get('[data-testid="create-comment"] button[type="submit"]').element
+      .parentElement!;
+    expect(footer.classList).toContain('justify-end');
+    expect([...footer.children].map((el) => el.textContent?.trim())).toEqual([
+      '完了にする',
+      'コメント',
+    ]);
+
+    const readOnly = mount(CommentThread, {
+      props: {
+        projectId: 'p1',
+        taskId: 't1',
+        comments: [],
+        commentsError: '',
+        editable: false,
+        currentUserId: alice.id,
+      },
+      slots,
+      global: { plugins: [createPinia(), PiniaColada] },
+    });
+    expect(buttons(readOnly)).not.toContain('完了にする');
+  });
+
   it('marks edited comments', async () => {
     const wrapper = await mountThread([
       makeComment(),
@@ -103,7 +152,7 @@ describe('CommentThread', () => {
 
     const [first, second] = wrapper.findAll('[data-testid="comment"]');
     expect(first?.find('[data-testid="comment-edited"]').exists()).toBe(false);
-    expect(second?.get('[data-testid="comment-edited"]').text()).toBe('更新履歴あり');
+    expect(second?.get('[data-testid="comment-edited"]').text()).toBe('編集済み');
   });
 
   it('offers editing only on the current user’s comments when editable', async () => {
@@ -157,7 +206,7 @@ describe('CommentThread', () => {
 
     await comment
       .findAll('button')
-      .find((b) => b.text() === '取消')
+      .find((b) => b.text() === 'キャンセル')
       ?.trigger('click');
 
     expect(localStorage.getItem('draft:t1:comment:c1')).toBeNull();

@@ -1,0 +1,16 @@
+<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg { fill: #1a1a1a; }
+    .bar { fill: #fafafa; }
+    .accent { fill: #5b8def; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #fafafa; }
+      .bar { fill: #1a1a1a; }
+      .accent { fill: #3466e0; }
+    }
+  </style>
+  <rect width="32" height="32" rx="8" class="bg" />
+  <rect x="6" y="8" width="13" height="4" rx="2" class="bar" />
+  <rect x="11" y="14" width="15" height="4" rx="2" class="accent" />
+  <rect x="8" y="20" width="9" height="4" rx="2" class="bar" />
+</svg>

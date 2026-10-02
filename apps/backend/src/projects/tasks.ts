@@ -2,17 +2,11 @@ import { drizzle } from 'drizzle-orm/d1';
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { D1Database } from '@cloudflare/workers-types';
-import {
-  DEFAULT_TASK_COLOR,
-  emptyRichTextDoc,
-  type Task,
-  type TaskColor,
-  type TaskStatus,
-  type UserSummary,
-} from '@pm-tool/shared';
-import { tasks, users } from '../db/schema';
+import { emptyRichTextDoc, type Task, type TaskStatus, type UserSummary } from '@pm-tool/shared';
+import { taskLabels, tasks, users } from '../db/schema';
 import { avatarUrlFor } from '../users/avatar';
 import { apiError } from './errors';
+import { findLabel, toLabel } from './labels';
 import { isMember } from './members';
 import { deserializeRichText, serializeRichText } from './rich-text';
 
@@ -35,9 +29,11 @@ function taskQuery(db: D1Database) {
         name: creator.name,
         avatarKey: creator.avatarKey,
       },
+      label: taskLabels,
     })
     .from(tasks)
     .leftJoin(assignee, eq(assignee.id, tasks.assigneeId))
+    .leftJoin(taskLabels, eq(taskLabels.id, tasks.labelId))
     .innerJoin(creator, eq(creator.id, tasks.createdBy));
 }
 
@@ -63,7 +59,7 @@ function toTask(row: TaskRow): Task {
     assignee: row.assignee && toUserSummary(row.assignee),
     startDate: row.task.startDate,
     endDate: row.task.endDate,
-    color: row.task.color,
+    label: row.label && toLabel(row.label),
     archivedAt: row.task.archivedAt?.toISOString() ?? null,
     createdBy: toUserSummary(row.createdBy),
     createdAt: row.task.createdAt.toISOString(),
@@ -104,6 +100,16 @@ async function assertAssignable(
   }
 }
 
+async function assertLabelInProject(
+  db: D1Database,
+  projectId: string,
+  labelId: string | null | undefined,
+) {
+  if (labelId && !(await findLabel(db, projectId, labelId))) {
+    throw apiError(400, 'validation_error');
+  }
+}
+
 interface DateRange {
   startDate: string | null;
   endDate: string | null;
@@ -129,7 +135,7 @@ interface TaskInput {
   assigneeId?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  color?: TaskColor;
+  labelId?: string | null;
 }
 
 export async function createTask(
@@ -147,6 +153,7 @@ export async function createTask(
     { allowEmpty: true },
   );
   await assertAssignable(db, projectId, input.assigneeId);
+  await assertLabelInProject(db, projectId, input.labelId);
   const now = new Date();
   const id = crypto.randomUUID();
   await drizzle(db)
@@ -161,7 +168,7 @@ export async function createTask(
       assigneeId: input.assigneeId ?? null,
       startDate: range.startDate,
       endDate: range.endDate,
-      color: input.color ?? DEFAULT_TASK_COLOR,
+      labelId: input.labelId ?? null,
       createdBy,
       createdAt: now,
       updatedAt: now,
@@ -182,6 +189,7 @@ export async function updateTask(
       ? undefined
       : serializeRichText(input.description, projectId, 'description', { allowEmpty: true });
   await assertAssignable(db, projectId, input.assigneeId);
+  await assertLabelInProject(db, projectId, input.labelId);
   const now = new Date();
   // Compared against the normalized current doc so re-saving unchanged or legacy plain text
   // does not mark the description as edited.
@@ -197,7 +205,7 @@ export async function updateTask(
       assigneeId: input.assigneeId,
       startDate: range.startDate,
       endDate: range.endDate,
-      color: input.color,
+      labelId: input.labelId,
       updatedAt: now,
     })
     .where(and(eq(tasks.id, taskId), eq(tasks.projectId, projectId)));

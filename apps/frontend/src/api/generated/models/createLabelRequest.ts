@@ -47,20 +47,14 @@
  *
  * OpenAPI spec version: 0.0.0
  */
+import type { LabelColor } from './labelColor';
 
-/**
- * タスクの表示色。既定は gray
- */
-export type TaskColor = typeof TaskColor[keyof typeof TaskColor];
-
-
-export const TaskColor = {
-  red: 'red',
-  orange: 'orange',
-  yellow: 'yellow',
-  green: 'green',
-  teal: 'teal',
-  blue: 'blue',
-  purple: 'purple',
-  gray: 'gray',
-} as const;
+export interface CreateLabelRequest {
+  /**
+     * 前後の空白を除去してから長さを検証・保存する。同一プロジェクト内で一意。
+     * @minLength 1
+     * @maxLength 50
+     */
+  name: string;
+  color: LabelColor;
+}

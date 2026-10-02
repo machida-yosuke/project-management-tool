@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { TASK_COLORS, TASK_STATUSES } from '@pm-tool/shared';
+import { TASK_STATUSES } from '@pm-tool/shared';
 import type { AuthEnv } from '../middleware/require-auth';
 import { onValidationError } from '../middleware/validation';
 import { EDITOR_ROLES, assertRole, requireMembership } from '../projects/authorize';
@@ -13,7 +13,7 @@ const assigneeId = z.string().nullable();
 // z.iso.date() rejects non-existent dates such as 2026-02-30, unlike a bare regex.
 const calendarDate = z.iso.date();
 const dateField = calendarDate.nullable().optional();
-const color = z.enum(TASK_COLORS);
+const labelId = z.string().nullable();
 
 const projectParam = z.object({ projectId: z.string() });
 const taskParam = z.object({ projectId: z.string(), taskId: z.string() });
@@ -29,7 +29,7 @@ const createSchema = z.object({
   assigneeId: assigneeId.optional(),
   startDate: dateField,
   endDate: dateField,
-  color: color.optional(),
+  labelId: labelId.optional(),
 });
 const updateSchema = z.object({
   title: title.optional(),
@@ -38,7 +38,7 @@ const updateSchema = z.object({
   assigneeId: assigneeId.optional(),
   startDate: dateField,
   endDate: dateField,
-  color: color.optional(),
+  labelId: labelId.optional(),
 });
 
 export const tasksRoute = new Hono<AuthEnv>()

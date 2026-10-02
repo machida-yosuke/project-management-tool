@@ -73,6 +73,8 @@ tags:
     description: プロジェクト内のタスク
   - name: comments
     description: タスクのスレッド（コメント）
+  - name: labels
+    description: プロジェクト内のタスクラベル
   - name: members
     description: プロジェクトメンバー
   - name: invitations
@@ -513,6 +515,43 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /api/projects/{projectId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listProjectComments
+      summary: プロジェクト内の最新コメントを取得する
+      description: 全ロールが閲覧できる。プロジェクト内のアーカイブされていないタスクのコメントを作成日時の降順で返す。
+      tags: [comments]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: 返す件数の上限。1〜50 の整数。省略時は 20。それ以外の値は `validation_error`。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: コメント一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectComment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /api/projects/{projectId}/tasks/{taskId}/comments:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -740,6 +779,123 @@ paths:
           $ref: '#/components/responses/IpBanned'
         '404':
           description: プロジェクトのメンバーでない、または添付がこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/labels:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listLabels
+      summary: ラベル一覧を取得する
+      description: 全ロールが閲覧できる。作成日時の昇順。プロジェクト作成時に「バグ報告」「更新依頼」「その他」の3件が自動で作られる。
+      tags: [labels]
+      responses:
+        '200':
+          description: ラベル一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskLabel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createLabel
+      summary: ラベルを作成する
+      description: '`admin` / `staff` のみ。'
+      tags: [labels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLabelRequest'
+      responses:
+        '201':
+          description: 作成したラベル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLabel'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/LabelNameTaken'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/labels/{labelId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/LabelId'
+    patch:
+      operationId: updateLabel
+      summary: ラベルを変更する
+      description: '`admin` / `staff` のみ。'
+      tags: [labels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLabelRequest'
+      responses:
+        '200':
+          description: 変更後のラベル
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLabel'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、またはラベルがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '409':
+          $ref: '#/components/responses/LabelNameTaken'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteLabel
+      summary: ラベルを削除する
+      description: '`admin` / `staff` のみ。このラベルが付いていたタスクはラベルなしになる。'
+      tags: [labels]
+      responses:
+        '204':
+          description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、またはラベルがこのプロジェクトに存在しない
           content:
             application/json:
               schema:
@@ -1255,6 +1411,13 @@ components:
       description: コメント ID
       schema:
         type: string
+    LabelId:
+      name: labelId
+      in: path
+      required: true
+      description: ラベルの ID
+      schema:
+        type: string
     MemberUserId:
       name: userId
       in: path
@@ -1311,6 +1474,13 @@ components:
               value: { error: forbidden }
             ipBanned:
               value: { error: ip_banned }
+    LabelNameTaken:
+      description: 同じ名前のラベルがこのプロジェクトに既にある
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example: { error: label_name_taken }
     RateLimited:
       description: レートリミット超過、または一時 BAN 中
       headers:
@@ -1333,10 +1503,26 @@ components:
     TaskStatus:
       type: string
       enum: [open, done]
-    TaskColor:
+    LabelColor:
       type: string
-      enum: [red, orange, yellow, green, teal, blue, purple, gray]
-      description: タスクの表示色。既定は gray
+      pattern: '^#[0-9a-fA-F]{6}$'
+      description: ラベルの表示色（`#rrggbb`）。大文字で送っても小文字に正規化して保存する。
+      example: '#e5484d'
+    TaskLabel:
+      type: object
+      required: [id, projectId, name, color, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        name:
+          type: string
+        color:
+          $ref: '#/components/schemas/LabelColor'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
     CalendarDate:
       type: string
       format: date
@@ -1464,7 +1650,7 @@ components:
           assignee,
           startDate,
           endDate,
-          color,
+          label,
           archivedAt,
           createdBy,
           createdAt,
@@ -1484,7 +1670,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Timestamp'
             - type: 'null'
-          description: 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・色の変更では更新されない。未編集なら `null`
+          description: 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・ラベルの変更では更新されない。未編集なら `null`
         status:
           $ref: '#/components/schemas/TaskStatus'
         assignee:
@@ -1501,8 +1687,11 @@ components:
             - $ref: '#/components/schemas/CalendarDate'
             - type: 'null'
           description: 終了日。`startDate` と両方 `null` か両方あり
-        color:
-          $ref: '#/components/schemas/TaskColor'
+        label:
+          oneOf:
+            - $ref: '#/components/schemas/TaskLabel'
+            - type: 'null'
+          description: 付いているラベル。なければ `null`
         archivedAt:
           oneOf:
             - $ref: '#/components/schemas/Timestamp'
@@ -1534,6 +1723,20 @@ components:
             - $ref: '#/components/schemas/Timestamp'
             - type: 'null'
           description: 投稿後に編集した最終日時。未編集なら `null`
+    ProjectComment:
+      allOf:
+        - $ref: '#/components/schemas/TaskComment'
+        - type: object
+          required: [task]
+          properties:
+            task:
+              type: object
+              required: [id, title]
+              properties:
+                id:
+                  type: string
+                title:
+                  type: string
     RichTextMark:
       type: object
       required: [type]
@@ -1663,10 +1866,9 @@ components:
           type: [string, 'null']
           format: date
           description: '終了日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
-        color:
-          allOf:
-            - $ref: '#/components/schemas/TaskColor'
-          description: 省略時は gray
+        labelId:
+          type: [string, 'null']
+          description: 付けるラベルの ID（このプロジェクトのラベルであること。それ以外は `400 validation_error`）。省略・`null` でラベルなし。
     UpdateTaskRequest:
       type: object
       description: 全フィールド省略可。省略したフィールドは変更しない。
@@ -1693,8 +1895,9 @@ components:
           type: [string, 'null']
           format: date
           description: '終了日（YYYY-MM-DD）。両方指定するか両方省略/`null` にする。`startDate <= endDate`。片方だけ、または逆転は `400 {error: invalid_date_range}`。PATCH では `null` でクリア、省略で変更なし。'
-        color:
-          $ref: '#/components/schemas/TaskColor'
+        labelId:
+          type: [string, 'null']
+          description: 付けるラベルの ID（このプロジェクトのラベルであること。それ以外は `400 validation_error`）。`null` でラベルを外す。省略で変更なし。
     CreateCommentRequest:
       type: object
       required: [body]
@@ -1711,6 +1914,28 @@ components:
           allOf:
             - $ref: '#/components/schemas/RichTextDoc'
           description: 空のドキュメント（空白以外の文字も画像も無い）は `400 validation_error`
+    CreateLabelRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 前後の空白を除去してから長さを検証・保存する。同一プロジェクト内で一意。
+        color:
+          $ref: '#/components/schemas/LabelColor'
+    UpdateLabelRequest:
+      type: object
+      description: 全フィールド省略可。省略したフィールドは変更しない。
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 前後の空白を除去してから長さを検証・保存する。同一プロジェクト内で一意。
+        color:
+          $ref: '#/components/schemas/LabelColor'
     UpdateMemberRoleRequest:
       type: object
       required: [role]

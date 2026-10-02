@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { TaskComment } from '@pm-tool/shared';
 import { taskComments, tasks, users } from '../db/schema';
@@ -62,6 +62,33 @@ export async function listComments(
     .where(eq(taskComments.taskId, taskId))
     .orderBy(asc(taskComments.createdAt), asc(sql`${taskComments}.rowid`));
   return rows.map((row) => toComment(row, projectId));
+}
+
+export type ProjectComment = TaskComment & { task: { id: string; title: string } };
+
+export async function listProjectComments(
+  db: D1Database,
+  projectId: string,
+  limit: number,
+): Promise<ProjectComment[]> {
+  const rows = await drizzle(db)
+    .select({
+      comment: taskComments,
+      author: {
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        avatarKey: users.avatarKey,
+      },
+      task: { id: tasks.id, title: tasks.title },
+    })
+    .from(taskComments)
+    .innerJoin(users, eq(users.id, taskComments.userId))
+    .innerJoin(tasks, eq(tasks.id, taskComments.taskId))
+    .where(and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt)))
+    .orderBy(desc(taskComments.createdAt), desc(sql`${taskComments}.rowid`))
+    .limit(limit);
+  return rows.map((row) => ({ ...toComment(row, projectId), task: row.task }));
 }
 
 export async function createComment(
