@@ -307,25 +307,22 @@ const currentBlockStyle = computed(() => {
         role="toolbar"
         :aria-label="`${label} の書式`"
       >
+        <!-- No Tooltip here: a TooltipTrigger between the menu root and its trigger steals the popper anchor, leaving the menu positioned off-screen. -->
         <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <DropdownMenuTrigger as-child>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  :class="TOOL_CLASS"
-                  type="button"
-                  aria-label="段落スタイル"
-                >
-                  <component :is="currentBlockStyle.icon" class="size-4" />
-                  <span class="hidden sm:inline">{{ currentBlockStyle.label }}</span>
-                  <ChevronDown class="size-4 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>段落スタイル</TooltipContent>
-          </Tooltip>
+          <DropdownMenuTrigger as-child>
+            <Button
+              variant="ghost"
+              size="sm"
+              :class="TOOL_CLASS"
+              type="button"
+              aria-label="段落スタイル"
+              title="段落スタイル"
+            >
+              <component :is="currentBlockStyle.icon" class="size-4" />
+              <span class="hidden sm:inline">{{ currentBlockStyle.label }}</span>
+              <ChevronDown class="size-4 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="start" @close-auto-focus="returnFocusToEditor">
             <DropdownMenuItem
               v-for="style in BLOCK_STYLES"
