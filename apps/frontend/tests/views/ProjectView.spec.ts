@@ -387,7 +387,10 @@ describe('ProjectView', () => {
 
     const { wrapper } = await mountAt(ProjectView, '/projects/p1/tasks', bob);
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.get('[data-testid="project-not-found"]').text()).toContain(
+      'プロジェクトが見つかりません',
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="task"]').exists()).toBe(false);
   });
 });

@@ -276,7 +276,10 @@ describe('ProjectCalendarView', () => {
 
     const { wrapper } = await mountAt(ProjectCalendarView, PATH, alice);
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.get('[data-testid="project-not-found"]').text()).toContain(
+      'プロジェクトが見つかりません',
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="timeline-grid"]').exists()).toBe(false);
   });
 });

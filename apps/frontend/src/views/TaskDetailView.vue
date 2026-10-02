@@ -21,6 +21,7 @@ import UserAvatar from '../components/UserAvatar.vue';
 import LabelFormDialog from '../components/label/LabelFormDialog.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import RelativeTime from '../components/task/RelativeTime.vue';
 import SidebarSection from '../components/task/SidebarSection.vue';
 import TaskLabelPill from '../components/task/TaskLabelPill.vue';
@@ -71,13 +72,17 @@ const editable = computed(() => (project.value ? canEdit(project.value.role) : f
 const labelsQuery = useListLabels(projectId, () => ({ query: { enabled: editable.value } }));
 const labels = computed(() => labelsQuery.data.value ?? []);
 
+const firstLoadError = computed(
+  () => projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value,
+);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました') : '';
 });
 const commentsError = computed(() => {
   const e = commentsQuery.error.value;
@@ -224,6 +229,7 @@ function formatTimestamp(iso: string) {
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />

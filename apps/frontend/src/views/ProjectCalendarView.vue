@@ -5,6 +5,7 @@ import { canEdit } from '@pm-tool/shared';
 import { useGetProject, useListTasks, useUpdateTask } from '../api/generated';
 import TimelineGrid from '../components/calendar/TimelineGrid.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
@@ -71,13 +72,15 @@ const project = computed(() => projectQuery.data.value ?? null);
 const tasks = computed(() => tasksQuery.data.value ?? []);
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
 
+const firstLoadError = computed(() => projectQuery.error.value ?? tasksQuery.error.value);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? tasksQuery.error.value;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました') : '';
 });
 
 function invalidateTasks() {
@@ -142,6 +145,7 @@ async function commitDates({ taskId, startDate, endDate }: { taskId: string } & 
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <div v-if="project">
       <ProjectHeader :project="project" />

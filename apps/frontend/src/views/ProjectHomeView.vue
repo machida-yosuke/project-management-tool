@@ -11,6 +11,7 @@ import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import TaskStateIcon from '../components/task/TaskStateIcon.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { addDays, startOfWeek, todayString, type DateString } from '../lib/dates';
 import { dueStateClass } from '../lib/due-state';
@@ -29,13 +30,17 @@ const commentsQuery = useListProjectComments(projectId, { limit: COMMENT_LIMIT }
 const project = computed(() => projectQuery.data.value ?? null);
 const comments = computed(() => commentsQuery.data.value ?? []);
 
+const firstLoadError = computed(
+  () => projectQuery.error.value ?? tasksQuery.error.value ?? commentsQuery.error.value,
+);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? tasksQuery.error.value ?? commentsQuery.error.value;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました') : '';
 });
 
 function overlapsWeek(task: Task, weekStart: DateString, weekEnd: DateString) {
@@ -69,6 +74,7 @@ function taskPeriod(task: Task) {
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />

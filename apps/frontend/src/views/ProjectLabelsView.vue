@@ -12,6 +12,7 @@ import type { TaskLabel } from '../api/generated/models';
 import LabelFormDialog from '../components/label/LabelFormDialog.vue';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import TaskLabelPill from '../components/task/TaskLabelPill.vue';
 import {
   AlertDialog,
@@ -49,13 +50,15 @@ const project = computed(() => projectQuery.data.value ?? null);
 const labels = computed(() => labelsQuery.data.value ?? []);
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
 
+const firstLoadError = computed(() => projectQuery.error.value ?? labelsQuery.error.value ?? null);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? labelsQuery.error.value ?? null;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'ラベルの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'ラベルの読み込みに失敗しました') : '';
 });
 
 const actionError = ref('');
@@ -92,6 +95,7 @@ async function deleteLabel(label: TaskLabel) {
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />

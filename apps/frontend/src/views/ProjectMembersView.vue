@@ -21,6 +21,7 @@ import {
 } from '../api/generated';
 import EmptyState from '../components/layout/EmptyState.vue';
 import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import {
   AlertDialog,
@@ -85,14 +86,18 @@ const invitationsQuery = useListProjectInvitations(projectId, () => ({
 }));
 const invitations = computed(() => invitationsQuery.data.value ?? []);
 
+const firstLoadError = computed(
+  () =>
+    projectQuery.error.value ?? membersQuery.error.value ?? invitationsQuery.error.value ?? null,
+);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e =
-    projectQuery.error.value ?? membersQuery.error.value ?? invitationsQuery.error.value ?? null;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'メンバーの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'メンバーの読み込みに失敗しました') : '';
 });
 
 const actionError = ref('');
@@ -222,6 +227,7 @@ function formatDate(iso: string) {
 
 <template>
   <div>
+    <ProjectNotFound v-if="projectNotFound" />
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />
