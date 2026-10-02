@@ -48,7 +48,6 @@
  * OpenAPI spec version: 0.0.0
  */
 import type { RichTextDoc } from './richTextDoc';
-import type { TaskColor } from './taskColor';
 
 export interface CreateTaskRequest {
   /**
@@ -74,6 +73,9 @@ export interface CreateTaskRequest {
      * @nullable
      */
   endDate?: string | null;
-  /** 省略時は gray */
-  color?: TaskColor;
+  /**
+     * 付けるラベルの ID（このプロジェクトのラベルであること。それ以外は `400 validation_error`）。省略・`null` でラベルなし。
+     * @nullable
+     */
+  labelId?: string | null;
 }

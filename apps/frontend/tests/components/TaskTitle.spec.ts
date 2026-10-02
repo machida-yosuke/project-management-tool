@@ -42,14 +42,14 @@ describe('TaskTitle', () => {
   it('shows the title with an edit button when editable', async () => {
     const wrapper = await mountTitle();
 
-    expect(wrapper.get('h3').text()).toBe('Write spec');
+    expect(wrapper.get('h2').text()).toBe('Write spec');
     expect(wrapper.findAll('button').map((b) => b.text())).toEqual(['タイトルを編集']);
   });
 
   it('hides the edit button when not editable', async () => {
     const wrapper = await mountTitle(false);
 
-    expect(wrapper.get('h3').text()).toBe('Write spec');
+    expect(wrapper.get('h2').text()).toBe('Write spec');
     expect(wrapper.find('button').exists()).toBe(false);
   });
 
@@ -103,10 +103,10 @@ describe('TaskTitle', () => {
     await startEditing(wrapper);
     await wrapper.get('input[aria-label="タイトル"]').setValue('Discarded');
 
-    await findButton(wrapper, '取消').trigger('click');
+    await findButton(wrapper, 'キャンセル').trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('h3').text()).toBe('Write spec');
+    expect(wrapper.get('h2').text()).toBe('Write spec');
     await startEditing(wrapper);
     expect(inputValue(wrapper.get('input[aria-label="タイトル"]'))).toBe('Write spec');
     expect(patchBodies(requests)).toEqual([]);
@@ -121,7 +121,7 @@ describe('TaskTitle', () => {
     await wrapper.get('input[aria-label="タイトル"]').trigger('keydown', { key: 'Escape' });
     await flushPromises();
 
-    expect(wrapper.get('h3').text()).toBe('Write spec');
+    expect(wrapper.get('h2').text()).toBe('Write spec');
     expect(patchBodies(requests)).toEqual([]);
   });
 });

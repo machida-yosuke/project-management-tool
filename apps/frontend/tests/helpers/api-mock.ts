@@ -12,6 +12,7 @@ import {
   type ProjectInvitation,
   type ProjectMember,
   type Task,
+  type TaskLabel,
   type UserSummary,
 } from '@pm-tool/shared';
 import { axiosInstance } from '../../src/lib/api';
@@ -146,11 +147,22 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     assignee: null,
     startDate: null,
     endDate: null,
-    color: 'gray',
+    label: null,
     archivedAt: null,
     createdBy: alice,
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeLabel(overrides: Partial<TaskLabel> = {}): TaskLabel {
+  return {
+    id: 'l1',
+    projectId: 'p1',
+    name: 'バグ報告',
+    color: '#e5484d',
+    createdAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
 }

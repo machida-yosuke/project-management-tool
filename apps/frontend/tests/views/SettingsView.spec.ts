@@ -1,4 +1,4 @@
-import { flushPromises } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsView from '../../src/views/SettingsView.vue';
 import { ImageDecodeError, resizeAvatar } from '../../src/lib/image';
@@ -27,7 +27,34 @@ async function selectFile(
   await flushPromises();
 }
 
+// Reka UI teleports the dialog to <body>, so it lives outside the mounted wrapper.
+function confirmDialog(): HTMLElement {
+  const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+  if (!dialog) throw new Error('Confirmation dialog is not open');
+  return dialog;
+}
+
+function dialogButton(label: string): HTMLButtonElement {
+  const button = Array.from(confirmDialog().querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === label,
+  );
+  if (!button) throw new Error(`Dialog button not found: ${label}`);
+  return button;
+}
+
+async function openDeleteDialog(wrapper: VueWrapper) {
+  await wrapper.get('[data-testid="delete-account"] button').trigger('click');
+  await flushPromises();
+}
+
+async function clickDialogButton(label: string) {
+  dialogButton(label).click();
+  await flushPromises();
+}
+
 describe('SettingsView', () => {
+  enableAutoUnmount(afterEach);
+
   beforeEach(() => {
     resizeAvatarMock.mockResolvedValue(resized);
   });
@@ -164,27 +191,34 @@ describe('SettingsView', () => {
     expect(wrapper.get('input[type="file"]').attributes('disabled')).toBeUndefined();
   });
 
-  it('requires a second confirmation before deleting the account and then goes to /login', async () => {
+  it('requires confirming in a dialog before deleting the account and then goes to /login', async () => {
     const fetchMock = stubApi({ 'DELETE /api/me': noContent() });
 
     const { wrapper, router, pinia } = await mountAt(SettingsView, '/settings', alice);
-    const section = () => wrapper.get('[data-testid="delete-account"]');
+    await openDeleteDialog(wrapper);
 
-    await section().get('button').trigger('click');
     expect(fetchMock).not.toHaveBeenCalled();
-    const confirmButton = section()
-      .findAll('button')
-      .find((b) => b.text() === '本当に退会する');
-    expect(confirmButton).toBeDefined();
+    expect(confirmDialog().querySelector('h2')?.textContent?.trim()).toBe('退会する');
 
-    await confirmButton?.trigger('click');
-    await flushPromises();
+    await clickDialogButton('退会する');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(router.currentRoute.value.path).toBe('/login');
     const authStore = useAuthStore(pinia);
     expect(authStore.user).toBeNull();
     expect(authStore.status).toBe('unauthenticated');
+  });
+
+  it('keeps the account when the dialog is cancelled', async () => {
+    const fetchMock = stubApi({ 'DELETE /api/me': noContent() });
+
+    const { wrapper, router } = await mountAt(SettingsView, '/settings', alice);
+    await openDeleteDialog(wrapper);
+    await clickDialogButton('キャンセル');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(router.currentRoute.value.path).toBe('/settings');
   });
 
   it('lists the projects that block account deletion', async () => {
@@ -202,12 +236,10 @@ describe('SettingsView', () => {
     });
 
     const { wrapper, router, pinia } = await mountAt(SettingsView, '/settings', alice);
-    await wrapper.get('[data-testid="delete-account"] button').trigger('click');
-    const confirmButton = wrapper
-      .findAll('[data-testid="delete-account"] button')
-      .find((b) => b.text() === '本当に退会する');
-    await confirmButton?.trigger('click');
-    await flushPromises();
+    await openDeleteDialog(wrapper);
+    await clickDialogButton('退会する');
+
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
 
     expect(wrapper.get('[data-testid="delete-account"] [role="alert"]').text()).toContain(
       '先にプロジェクトを削除してください',

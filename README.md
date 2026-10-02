@@ -135,6 +135,25 @@ There are two environments, `staging` and `production`. The frontend Worker is p
 
 > The frontend and backend run on different hosts, but both live under the same `<account>.workers.dev`, so the browser still sends the `SameSite=Lax` session cookie. Putting them on separate custom domains (different sites) will break login.
 
+## CI / CD
+
+GitHub Actions runs the checks and the deploys. Workflows live in `.github/workflows/`.
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `ci.yml` | Pull requests, pushes to `main` | `lint`, `typecheck`, `test`, `build` |
+| `deploy.yml` | Pushes to `staging` / `production`, or manual dispatch | Checks, frontend build, then `wrangler` via `cloudflare/wrangler-action`: D1 migrations, backend deploy, frontend deploy |
+
+Branch flow: merge feature branches into `main`, merge `main` into `staging` to deploy staging, then merge `staging` into `production` to deploy production. Each push to `staging` or `production` deploys that environment.
+
+### One-time GitHub setup
+
+1. Create a Cloudflare API token with the "Edit Cloudflare Workers" template plus `D1:Edit`.
+2. Add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+3. Create GitHub Environments named `staging` and `production`. In each, add the variable `VITE_API_BASE_URL` (the backend URL for that environment, same value as the local `.env.<env>` file). Enable "Required reviewers" on `production` if deploys there should need approval.
+
+Worker secrets (`GOOGLE_*`, `BASIC_AUTH_*`) stay in Cloudflare and are set once with `wrangler secret put` as described above; the workflow does not manage them.
+
 ## Rate limiting
 
 The backend limits every request (including `/health`) per client IP (`cf-connecting-ip`) to 100 requests per minute using a Workers Rate Limiting binding. The 101st request adds a strike:

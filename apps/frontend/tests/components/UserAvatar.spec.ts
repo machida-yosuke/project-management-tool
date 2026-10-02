@@ -22,4 +22,13 @@ describe('UserAvatar', () => {
     expect(wrapper.text()).toBe('B');
     expect(wrapper.attributes('style')).toContain('width: 24px');
   });
+
+  it('colors the initial consistently per user id, regardless of name', () => {
+    const style = (props: { name: string; userId?: string }) =>
+      mount(UserAvatar, { props: { avatarUrl: null, ...props } }).attributes('style');
+
+    expect(style({ name: 'Alice', userId: 'u-1' })).toBe(style({ name: 'Renamed', userId: 'u-1' }));
+    expect(style({ name: 'Alice', userId: 'u-1' })).toMatch(/background-color: #[0-9a-f]{8}/);
+    expect(style({ name: 'Alice' })).toBe(style({ name: 'Alice' }));
+  });
 });

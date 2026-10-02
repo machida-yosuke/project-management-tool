@@ -65,6 +65,8 @@ import type {
 
 import type {
   CreateCommentRequest,
+  ListProjectCommentsParams,
+  ProjectComment,
   TaskComment,
   UpdateCommentRequest
 } from '../models';
@@ -76,6 +78,35 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   /**
+ * 全ロールが閲覧できる。プロジェクト内のアーカイブされていないタスクのコメントを作成日時の降順で返す。
+ * @summary プロジェクト内の最新コメントを取得する
+ */
+export const listProjectComments = (
+    projectId: string,
+    params?: ListProjectCommentsParams,
+ options?: SecondParameter<typeof customInstance<ProjectComment[]>>,) => {
+      return customInstance<ProjectComment[]>(
+      {url: `/api/projects/${projectId}/comments`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+export const getListProjectCommentsQueryKey = (projectId: Parameters<typeof listProjectComments>[0], params?: Parameters<typeof listProjectComments>[1]) => ["get", "/api/projects/${projectId}/comments", projectId ?? null, params ?? null] as const;
+
+export function getListProjectCommentsQueryOptions<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listProjectComments>> | undefined = undefined>(projectId: Parameters<typeof listProjectComments>[0], params?: Parameters<typeof listProjectComments>[1], coladaOptions?: { query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listProjectComments>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listProjectComments>[2]; }): DefineQueryOptions<Awaited<ReturnType<typeof listProjectComments>>, TError, TInitial> {
+  const coladaRequest = listProjectComments;
+  return {
+    key: getListProjectCommentsQueryKey(projectId, params),
+    ...coladaOptions?.query,
+    query: ({ signal: coladaSignal }) => coladaRequest(projectId, params, { ...coladaOptions?.request, signal: coladaSignal }),
+  };
+}
+
+export function useListProjectComments<TError = globalThis.Error, TInitial extends Awaited<ReturnType<typeof listProjectComments>> | undefined = undefined>(projectId: MaybeRefOrGetter<Parameters<typeof listProjectComments>[0]>, params?: MaybeRefOrGetter<Parameters<typeof listProjectComments>[1]>, coladaOptions?: MaybeRefOrGetter<{ query?: Partial<Omit<DefineQueryOptions<Awaited<ReturnType<typeof listProjectComments>>, TError, TInitial>, 'query'>>; request?: Parameters<typeof listProjectComments>[2]; }>) {
+  return useColadaQuery(() => getListProjectCommentsQueryOptions(toColadaValue(projectId), toColadaValue(params), toColadaValue(coladaOptions)));
+}
+/**
  * 全ロールが閲覧できる。作成日時の昇順。
  * @summary タスクのコメント一覧を取得する
  */
@@ -164,6 +195,7 @@ export function getUpdateCommentMutationOptions<TError = globalThis.Error, TCont
 export function useUpdateComment<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof updateComment>>, UpdateCommentMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof updateComment>[4]; }) {
   return useColadaMutation(getUpdateCommentMutationOptions(coladaOptions));
 }
+export type ListProjectCommentsResult = NonNullable<Awaited<ReturnType<typeof listProjectComments>>>
 export type ListCommentsResult = NonNullable<Awaited<ReturnType<typeof listComments>>>
 export type CreateCommentResult = NonNullable<Awaited<ReturnType<typeof createComment>>>
 export type UpdateCommentResult = NonNullable<Awaited<ReturnType<typeof updateComment>>>

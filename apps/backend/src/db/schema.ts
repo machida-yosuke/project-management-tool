@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, primaryKey, unique, index } from 'drizzle-orm/sqlite-core';
-import { PROJECT_ROLES, TASK_COLORS, TASK_STATUSES } from '@pm-tool/shared';
+import { PROJECT_ROLES, TASK_STATUSES } from '@pm-tool/shared';
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
@@ -63,6 +63,20 @@ export const projectInvitations = sqliteTable(
   ],
 );
 
+export const taskLabels = sqliteTable(
+  'task_labels',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [unique('task_labels_project_name_unique').on(t.projectId, t.name)],
+);
+
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -79,7 +93,7 @@ export const tasks = sqliteTable(
     // Calendar dates as 'YYYY-MM-DD' so lexical comparison matches chronological order.
     startDate: text('start_date'),
     endDate: text('end_date'),
-    color: text('color', { enum: TASK_COLORS }).notNull().default('gray'),
+    labelId: text('label_id').references(() => taskLabels.id, { onDelete: 'set null' }),
     archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     createdBy: text('created_by')
       .notNull()

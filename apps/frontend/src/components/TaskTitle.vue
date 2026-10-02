@@ -4,6 +4,8 @@ import { useUpdateTask } from '../api/generated';
 import type { Task } from '../api/generated/models';
 import { errorMessage } from '../lib/api';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 const props = defineProps<{ task: Task; editable: boolean }>();
 
@@ -58,45 +60,38 @@ async function save() {
 </script>
 
 <template>
-  <form v-if="editing" class="task-title" data-testid="task-title-form" @submit.prevent="save">
-    <input
+  <form
+    v-if="editing"
+    class="flex flex-wrap items-center gap-2"
+    data-testid="task-title-form"
+    @submit.prevent="save"
+  >
+    <Input
       v-model="draft"
       type="text"
       required
       maxlength="200"
       aria-label="タイトル"
+      class="min-w-0 flex-1"
       @keydown="onKeydown"
     />
-    <button type="submit" :disabled="submitting">保存</button>
-    <button type="button" :disabled="submitting" @click="cancel">取消</button>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <Button type="submit" :disabled="submitting">保存</Button>
+    <Button type="button" variant="outline" :disabled="submitting" @click="cancel">
+      キャンセル
+    </Button>
+    <p v-if="error" class="basis-full text-destructive" role="alert">{{ error }}</p>
   </form>
-  <div v-else class="task-title">
-    <h3>{{ task.title }}</h3>
-    <button v-if="editable" type="button" @click="startEditing">タイトルを編集</button>
+  <div v-else class="flex items-start justify-between gap-3">
+    <h2 class="min-w-0 text-3xl font-semibold tracking-tight wrap-anywhere">{{ task.title }}</h2>
+    <Button
+      v-if="editable"
+      type="button"
+      variant="outline"
+      size="sm"
+      class="mt-1 flex-none"
+      @click="startEditing"
+    >
+      タイトルを編集
+    </Button>
   </div>
 </template>
-
-<style scoped>
-.task-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-title h3 {
-  margin: 0;
-}
-
-.task-title input {
-  flex: 1;
-  min-width: 0;
-}
-
-.error {
-  flex-basis: 100%;
-  margin: 0;
-  color: #c00;
-}
-</style>
