@@ -79,7 +79,9 @@ async function submit() {
     <p v-if="error" class="basis-full text-destructive" role="alert">{{ error }}</p>
   </form>
   <div v-else class="flex items-start justify-between gap-3">
-    <h2 class="min-w-0 text-3xl font-semibold tracking-tight wrap-anywhere">{{ title }}</h2>
+    <h2 class="min-w-0 text-2xl font-semibold sm:text-3xl tracking-tight wrap-anywhere">
+      {{ title }}
+    </h2>
     <Button
       v-if="editable"
       type="button"

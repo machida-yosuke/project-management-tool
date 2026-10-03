@@ -8,21 +8,23 @@ defineProps<{ author: Pick<UserSummary, 'id' | 'name' | 'avatarUrl'>; createdAt:
 
 <template>
   <article class="overflow-hidden rounded-lg border bg-background">
-    <header class="flex min-h-10 items-center gap-2 border-b bg-muted/50 px-4 py-1.5 text-sm">
+    <header
+      class="flex min-h-10 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-1.5 sm:px-4 text-sm"
+    >
       <UserAvatar
         :user-id="author.id"
         :name="author.name"
         :avatar-url="author.avatarUrl"
         :size="20"
       />
-      <span class="font-semibold">{{ author.name }}</span>
+      <span class="min-w-0 truncate font-semibold">{{ author.name }}</span>
       <RelativeTime :datetime="createdAt" class="text-muted-foreground" />
       <slot name="meta" />
       <div class="ml-auto flex items-center gap-1">
         <slot name="actions" />
       </div>
     </header>
-    <div class="p-4">
+    <div class="p-3 sm:p-4">
       <slot />
     </div>
   </article>

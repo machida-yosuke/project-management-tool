@@ -64,7 +64,7 @@ const bandClass = computed(() => {
   >
     <span
       v-if="draggable && !segment.clipStart"
-      class="absolute inset-y-0 left-0 w-2 cursor-ew-resize pointer-coarse:w-4"
+      class="absolute inset-y-0 left-0 w-2 cursor-ew-resize pointer-coarse:w-3"
       data-testid="handle-start"
       @pointerdown.stop="emit('grab', $event, 'start')"
     />
@@ -73,7 +73,7 @@ const bandClass = computed(() => {
     </span>
     <span
       v-if="draggable && !segment.clipEnd"
-      class="absolute inset-y-0 right-0 w-2 cursor-ew-resize pointer-coarse:w-4"
+      class="absolute inset-y-0 right-0 w-2 cursor-ew-resize pointer-coarse:w-3"
       data-testid="handle-end"
       @pointerdown.stop="emit('grab', $event, 'end')"
     />

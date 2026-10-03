@@ -295,7 +295,7 @@ function formatTimestamp(iso: string) {
           </div>
 
           <aside
-            class="order-first grid grid-cols-2 gap-x-6 text-sm lg:order-none lg:block"
+            class="order-first grid grid-cols-1 gap-x-6 sm:grid-cols-2 text-sm lg:order-none lg:block"
             data-testid="task-sidebar"
           >
             <SidebarSection title="担当者">
@@ -359,7 +359,7 @@ function formatTimestamp(iso: string) {
               <p v-else class="text-muted-foreground" data-testid="task-label">なし</p>
             </SidebarSection>
 
-            <SidebarSection class="col-span-2 lg:col-span-1" title="期間">
+            <SidebarSection class="sm:col-span-2 lg:col-span-1" title="期間">
               <div v-if="editable" class="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1.5">
                 <label for="task-start-date" class="text-muted-foreground">開始</label>
                 <Input
@@ -417,7 +417,7 @@ function formatTimestamp(iso: string) {
 
             <SidebarSection
               v-if="editable || task.archivedAt !== null"
-              class="col-span-2 lg:col-span-1"
+              class="sm:col-span-2 lg:col-span-1"
               title="アーカイブ"
             >
               <div class="flex flex-wrap items-center justify-between gap-2">

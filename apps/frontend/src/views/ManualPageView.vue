@@ -211,7 +211,7 @@ async function deleteManual() {
           </div>
 
           <aside
-            class="order-first grid grid-cols-2 gap-x-6 text-sm lg:order-none lg:block"
+            class="order-first grid grid-cols-1 gap-x-6 sm:grid-cols-2 text-sm lg:order-none lg:block"
             data-testid="manual-sidebar"
           >
             <SidebarSection title="作成者">
@@ -230,7 +230,7 @@ async function deleteManual() {
               <span data-testid="manual-updated-at">{{ formatTimestamp(manual.updatedAt) }}</span>
             </SidebarSection>
 
-            <SidebarSection v-if="editable" class="col-span-2 lg:col-span-1" title="削除">
+            <SidebarSection v-if="editable" class="sm:col-span-2 lg:col-span-1" title="削除">
               <div class="flex flex-wrap items-center justify-end gap-2">
                 <AlertDialog>
                   <AlertDialogTrigger as-child>

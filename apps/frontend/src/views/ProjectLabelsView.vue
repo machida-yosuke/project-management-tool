@@ -116,7 +116,7 @@ async function deleteLabel(label: TaskLabel) {
             <TableHeader>
               <TableRow class="hover:bg-transparent">
                 <TableHead class="px-4">ラベル</TableHead>
-                <TableHead class="px-4">色</TableHead>
+                <TableHead class="hidden px-4 sm:table-cell">色</TableHead>
                 <TableHead v-if="editable" class="px-4">
                   <span class="sr-only">操作</span>
                 </TableHead>
@@ -132,7 +132,10 @@ async function deleteLabel(label: TaskLabel) {
                 <TableCell class="px-4 py-3">
                   <TaskLabelPill :label="label" />
                 </TableCell>
-                <TableCell class="px-4 py-3 text-muted-foreground" data-testid="label-color">
+                <TableCell
+                  class="hidden px-4 py-3 text-muted-foreground sm:table-cell"
+                  data-testid="label-color"
+                >
                   <code class="font-mono text-xs">{{ label.color }}</code>
                 </TableCell>
                 <TableCell v-if="editable" class="px-4 py-3 text-right">

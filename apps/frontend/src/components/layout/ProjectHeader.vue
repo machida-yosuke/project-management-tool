@@ -26,9 +26,11 @@ const tabs = computed(() =>
 </script>
 
 <template>
-  <div class="mb-6 min-w-0 border-b pb-4">
+  <div
+    class="-mx-4 mb-6 min-w-0 overflow-x-auto border-b px-4 pb-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
+  >
     <nav
-      class="inline-flex w-max max-w-full gap-1 overflow-x-auto rounded-lg bg-muted p-1 text-sm font-medium whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      class="inline-flex w-max gap-1 rounded-lg bg-muted p-1 text-sm font-medium whitespace-nowrap"
       aria-label="プロジェクト"
     >
       <RouterLink
