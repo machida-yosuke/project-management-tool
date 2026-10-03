@@ -210,7 +210,7 @@ async function acceptInvitation(invitationId: string) {
                   >
                     <Input
                       v-model="passcodes[invitation.id]"
-                      class="w-40"
+                      class="w-full sm:w-40"
                       type="password"
                       placeholder="暗証番号"
                       required

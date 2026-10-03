@@ -1,5 +1,9 @@
 import { useQueryCache, type EntryKey, type QueryCache } from '@pinia/colada';
-import { getListProjectCommentsQueryKey, getListTasksQueryKey } from '../api/generated';
+import {
+  getListManualPagesQueryKey,
+  getListProjectCommentsQueryKey,
+  getListTasksQueryKey,
+} from '../api/generated';
 import type { Task } from '../api/generated/models';
 
 export function useInvalidate() {
@@ -19,6 +23,10 @@ export function listTasksKeyPrefix(projectId: string): EntryKey {
 
 export function listProjectCommentsKeyPrefix(projectId: string): EntryKey {
   return getListProjectCommentsQueryKey(projectId).slice(0, 3);
+}
+
+export function listManualPagesKeyPrefix(projectId: string): EntryKey {
+  return getListManualPagesQueryKey(projectId).slice(0, 3);
 }
 
 export function patchCachedTasks(

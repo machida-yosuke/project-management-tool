@@ -16,6 +16,8 @@ async function mountAt(path: string) {
       { path: '/projects/:projectId/tasks', name: 'project-tasks', component: Stub },
       { path: '/projects/:projectId/tasks/:taskId', name: 'task', component: Stub },
       { path: '/projects/:projectId/calendar', name: 'project-calendar', component: Stub },
+      { path: '/projects/:projectId/manuals', name: 'project-manuals', component: Stub },
+      { path: '/projects/:projectId/manuals/:manualId', name: 'manual', component: Stub },
       { path: '/projects/:projectId/labels', name: 'project-labels', component: Stub },
       { path: '/projects/:projectId/members', name: 'project-members', component: Stub },
     ],
@@ -36,6 +38,7 @@ describe('ProjectHeader', () => {
       ['ホーム', '/projects/p1'],
       ['タスク', '/projects/p1/tasks'],
       ['カレンダー', '/projects/p1/calendar'],
+      ['マニュアル', '/projects/p1/manuals'],
       ['ラベル', '/projects/p1/labels'],
       ['メンバー', '/projects/p1/members'],
     ]);
@@ -46,6 +49,8 @@ describe('ProjectHeader', () => {
     ['/projects/p1/tasks', 'タスク'],
     ['/projects/p1/tasks/t1', 'タスク'],
     ['/projects/p1/calendar', 'カレンダー'],
+    ['/projects/p1/manuals', 'マニュアル'],
+    ['/projects/p1/manuals/m1', 'マニュアル'],
     ['/projects/p1/labels', 'ラベル'],
     ['/projects/p1/members', 'メンバー'],
   ])('marks only the tab for %s as current', async (path, label) => {
@@ -60,6 +65,8 @@ describe('ProjectHeader', () => {
     '/projects/p1/tasks',
     '/projects/p1/tasks/t1',
     '/projects/p1/calendar',
+    '/projects/p1/manuals',
+    '/projects/p1/manuals/m1',
     '/projects/p1/labels',
     '/projects/p1/members',
   ])('renders only the tabs on %s', async (path) => {
@@ -67,6 +74,6 @@ describe('ProjectHeader', () => {
 
     expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.find('button[aria-label="プロジェクトを編集"]').exists()).toBe(false);
-    expect(wrapper.findAll('nav a')).toHaveLength(5);
+    expect(wrapper.findAll('nav a')).toHaveLength(6);
   });
 });

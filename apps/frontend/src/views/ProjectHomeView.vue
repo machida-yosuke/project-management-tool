@@ -2,7 +2,12 @@
 import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { isRichTextDocEmpty } from '@pm-tool/shared';
-import { useGetProject, useListProjectComments, useListTasks } from '../api/generated';
+import {
+  useGetProject,
+  useListMembers,
+  useListProjectComments,
+  useListTasks,
+} from '../api/generated';
 import type { Task } from '../api/generated/models';
 import UserAvatar from '../components/UserAvatar.vue';
 import RichTextContent from '../components/rich-text/RichTextContent.vue';
@@ -27,9 +32,12 @@ const projectId = computed(() => String(route.params.projectId));
 const projectQuery = useGetProject(projectId);
 const tasksQuery = useListTasks(projectId);
 const commentsQuery = useListProjectComments(projectId, { limit: COMMENT_LIMIT });
+const membersQuery = useListMembers(projectId);
 
 const project = computed(() => projectQuery.data.value ?? null);
 const comments = computed(() => commentsQuery.data.value ?? []);
+// The member count is decoration on the overview, so a failed load only hides it.
+const members = computed(() => (membersQuery.error.value ? undefined : membersQuery.data.value));
 
 const firstLoadError = computed(
   () => projectQuery.error.value ?? tasksQuery.error.value ?? commentsQuery.error.value,
@@ -79,7 +87,7 @@ function taskPeriod(task: Task) {
     <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
       <ProjectHeader :project="project" />
-      <ProjectOverview :project="project" />
+      <ProjectOverview :project="project" :members="members" :tasks="tasksQuery.data.value" />
 
       <div class="grid gap-8 lg:grid-cols-2">
         <section class="min-w-0 space-y-3" aria-labelledby="week-tasks-heading">

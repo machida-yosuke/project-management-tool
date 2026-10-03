@@ -167,7 +167,9 @@ function taskPeriod(task: Task) {
           />
           <Dialog v-if="editable" v-model:open="createTaskOpen">
             <DialogTrigger as-child>
-              <Button type="button" size="sm">タスクを作成</Button>
+              <Button type="button" size="sm" class="order-first w-full sm:order-none sm:w-auto"
+                >タスクを作成</Button
+              >
             </DialogTrigger>
             <DialogContent class="sm:max-w-2xl" @interact-outside="onCreateTaskInteractOutside">
               <DialogHeader>

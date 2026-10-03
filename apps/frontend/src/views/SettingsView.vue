@@ -194,18 +194,18 @@ async function deleteAccount() {
           <CardDescription>PNG / JPEG / WebP / GIF</CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
-          <div class="flex items-center gap-4">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
             <UserAvatar
               :user-id="authStore.user.id"
               :name="authStore.user.name"
               :avatar-url="authStore.user.avatarUrl"
               :size="80"
             />
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
               <!-- Native file input: the Input component always binds v-model, which a file input cannot use. -->
               <input
                 :key="fileInputKey"
-                class="text-sm text-muted-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                class="max-w-full min-w-0 text-sm text-muted-foreground file:mr-3 file:h-8 file:cursor-pointer file:rounded-md file:border file:border-input file:bg-background file:px-3 file:text-sm file:font-medium file:text-foreground hover:file:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 aria-label="アバター画像"

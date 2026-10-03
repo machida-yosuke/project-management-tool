@@ -55,6 +55,7 @@ describe('ProjectView', () => {
       ['ホーム', '/projects/p1'],
       ['タスク', '/projects/p1/tasks'],
       ['カレンダー', '/projects/p1/calendar'],
+      ['マニュアル', '/projects/p1/manuals'],
       ['ラベル', '/projects/p1/labels'],
       ['メンバー', '/projects/p1/members'],
     ]);

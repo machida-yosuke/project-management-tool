@@ -42,6 +42,7 @@ info:
     - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
     - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
     - 画像添付のアップロード: `admin` / `staff`
+    - マニュアルの閲覧・検索: 全ロール。作成・更新・削除: `admin` / `staff`
     - コメント編集: 投稿者本人（かつ `admin` / `staff`）
     - メンバー・招待の管理: `admin`
     - プロジェクトの完了・進行中への戻し: `admin`
@@ -76,6 +77,8 @@ tags:
     description: タスクのスレッド（コメント）
   - name: labels
     description: プロジェクト内のタスクラベル
+  - name: manuals
+    description: プロジェクト内のマニュアル（リッチテキストのページ）
   - name: members
     description: プロジェクトメンバー
   - name: invitations
@@ -953,6 +956,151 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 
+  /api/projects/{projectId}/manuals:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listManualPages
+      summary: マニュアルの一覧を取得・検索する
+      description: 全ロールが閲覧できる。作成日時の昇順。本文（`body`）は含まない。
+      tags: [manuals]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: 検索キーワード。前後の空白を除去し、空なら全件を返す。タイトルまたは本文のプレーンテキストに部分一致するページを返す（英字の大文字小文字を区別しない）。`%` `_` `\` はワイルドカードではなく文字として扱う。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: マニュアルの一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ManualPageSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createManualPage
+      summary: マニュアルのページを作成する
+      description: '`admin` / `staff` のみ。'
+      tags: [manuals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateManualPageRequest'
+      responses:
+        '201':
+          description: 作成したページ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/projects/{projectId}/manuals/{manualId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ManualPageId'
+    get:
+      operationId: getManualPage
+      summary: マニュアルのページを取得する
+      description: 全ロールが閲覧できる。
+      tags: [manuals]
+      responses:
+        '200':
+          description: ページ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/IpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、またはページがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    patch:
+      operationId: updateManualPage
+      summary: マニュアルのページを更新する
+      description: '`admin` / `staff` のみ。指定したフィールドだけ更新し、`updatedAt` は常に更新される。'
+      tags: [manuals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateManualPageRequest'
+      responses:
+        '200':
+          description: 更新後のページ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualPage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、またはページがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      operationId: deleteManualPage
+      summary: マニュアルのページを削除する
+      description: '`admin` / `staff` のみ。本文に埋め込んだ画像添付は削除しない。'
+      tags: [manuals]
+      responses:
+        '204':
+          description: 削除完了
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ForbiddenOrIpBanned'
+        '404':
+          description: プロジェクトのメンバーでない、またはページがこのプロジェクトに存在しない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example: { error: not_found }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
   /api/projects/{projectId}/members:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -1491,6 +1639,13 @@ components:
       description: ラベルの ID
       schema:
         type: string
+    ManualPageId:
+      name: manualId
+      in: path
+      required: true
+      description: マニュアルのページ ID
+      schema:
+        type: string
     MemberUserId:
       name: userId
       in: path
@@ -1909,6 +2064,31 @@ components:
         createdAt:
           $ref: '#/components/schemas/Timestamp'
 
+    ManualPageSummary:
+      type: object
+      required: [id, projectId, title, createdBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        title:
+          type: string
+        createdBy:
+          $ref: '#/components/schemas/UserSummary'
+        createdAt:
+          $ref: '#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: '#/components/schemas/Timestamp'
+    ManualPage:
+      allOf:
+        - $ref: '#/components/schemas/ManualPageSummary'
+        - type: object
+          required: [body]
+          properties:
+            body:
+              $ref: '#/components/schemas/RichTextDoc'
     CreateProjectRequest:
       type: object
       required: [name]
@@ -2029,6 +2209,32 @@ components:
           description: 前後の空白を除去してから長さを検証・保存する。同一プロジェクト内で一意。
         color:
           $ref: '#/components/schemas/LabelColor'
+    CreateManualPageRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        body:
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 省略時は空のドキュメント（空段落 1 つ）
+    UpdateManualPageRequest:
+      type: object
+      description: 全フィールド省略可。省略したフィールドは変更しない。
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 前後の空白を除去してから長さを検証・保存する
+        body:
+          allOf:
+            - $ref: '#/components/schemas/RichTextDoc'
+          description: 本文を置き換える
     UpdateMemberRoleRequest:
       type: object
       required: [role]

@@ -14,9 +14,11 @@ export const draftKeys = {
   newProject: () => 'draft:project:new',
   projectDescription: (projectId: string) => `draft:project:${projectId}:description`,
   newTask: (projectId: string) => `draft:project:${projectId}:new-task`,
+  newManual: (projectId: string) => `draft:project:${projectId}:new-manual`,
   description: (taskId: string) => `draft:${taskId}:description`,
   newComment: (taskId: string) => `draft:${taskId}:comment:new`,
   comment: (taskId: string, commentId: string) => `draft:${taskId}:comment:${commentId}`,
+  manual: (manualId: string) => `draft:manual:${manualId}:body`,
 };
 
 function isQuotaExceeded(e: unknown): boolean {

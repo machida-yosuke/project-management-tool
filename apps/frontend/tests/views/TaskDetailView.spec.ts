@@ -166,7 +166,7 @@ describe('TaskDetailView', () => {
     expect(buttonLabels(wrapper.get('[data-testid="task-header"]'))).toEqual(['タイトルを編集']);
     const timeline = wrapper.get('[data-testid="task-timeline"]');
     expect(buttonLabels(timeline)).toEqual(
-      expect.arrayContaining(['本文を編集', '編集', '完了にする', 'コメント']),
+      expect.arrayContaining(['編集', '完了にする', 'コメント']),
     );
     expect(wrapper.find('[data-testid="create-comment"]').exists()).toBe(true);
   });
@@ -443,7 +443,12 @@ describe('TaskDetailView', () => {
     const timeline = wrapper.get('[data-testid="task-timeline"]');
     expect(timeline.get('[data-testid="description"]').text()).toBe('Spec body');
     expect(timeline.get('[data-testid="description-edited"]').text()).toBe('編集済み');
-    expect(timeline.findAll('button').map((b) => b.text())).not.toContain('本文を編集');
+    expect(
+      timeline
+        .get('.task-description')
+        .findAll('button')
+        .map((b) => b.text()),
+    ).not.toContain('編集');
   });
 
   it('hides an empty description and the edited mark for an untouched task', async () => {
@@ -471,7 +476,7 @@ describe('TaskDetailView', () => {
 
     const { wrapper } = await mountAt(TaskDetailView, PATH, alice);
     const summary = wrapper.get('[data-testid="task-timeline"]');
-    await findButton(summary, '本文を編集').trigger('click');
+    await findButton(summary.get('.task-description'), '編集').trigger('click');
     await flushPromises();
     expect(editorFor(summary, '本文').getText()).toBe('Old body');
 
