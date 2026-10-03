@@ -22,6 +22,7 @@ import {
 } from '@lucide/vue';
 import type { RichTextDoc } from '@pm-tool/shared';
 import { eventFile } from '../../lib/form';
+import { ATTACHMENT_HELP } from '../../lib/help-texts';
 import {
   AttachmentTooLargeError,
   ImageDecodeError,
@@ -415,6 +416,7 @@ const currentBlockStyle = computed(() => {
       </p>
       <EditorContent class="flex flex-1 flex-col" :editor="editor" />
     </div>
+    <p v-if="allowImages" class="mx-2 my-1 text-xs text-muted-foreground">{{ ATTACHMENT_HELP }}</p>
     <p v-if="toolError" class="mx-2 my-1 text-destructive" role="alert">{{ toolError }}</p>
     <Dialog v-model:open="linkDialogOpen">
       <DialogContent class="sm:max-w-md" @close-auto-focus="returnFocusToEditor">
