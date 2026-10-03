@@ -54,7 +54,7 @@ function formatDate(iso: string) {
         size="sm"
         @click="editing = true"
       >
-        本文を編集
+        編集
       </Button>
     </template>
     <RichTextForm

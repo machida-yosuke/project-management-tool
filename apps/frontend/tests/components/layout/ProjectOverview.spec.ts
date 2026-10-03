@@ -8,11 +8,17 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { PiniaColada, useQueryCache } from '@pinia/colada';
-import { plainTextToRichTextDoc, type Project } from '@pm-tool/shared';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import {
+  plainTextToRichTextDoc,
+  type Project,
+  type ProjectMember,
+  type Task,
+} from '@pm-tool/shared';
 import ProjectOverview from '../../../src/components/layout/ProjectOverview.vue';
 import { PROJECT_DONE_HELP } from '../../../src/lib/help-texts';
 import { getGetProjectQueryKey, getListProjectsQueryKey } from '../../../src/api/generated';
-import { json, makeProject, stubApi } from '../../helpers/api-mock';
+import { json, makeMember, makeProject, makeTask, stubApi } from '../../helpers/api-mock';
 import { currentDialog } from '../../helpers/dialog';
 import { inputValue } from '../../helpers/mount';
 
@@ -52,11 +58,20 @@ async function clickArchiveToggle(wrapper: VueWrapper): Promise<DOMWrapper<HTMLE
   return dialog;
 }
 
-function mountWith(project: Project) {
+const RouteStub = { template: '<div />' };
+
+function mountWith(project: Project, extra: { members?: ProjectMember[]; tasks?: Task[] } = {}) {
   const pinia = createPinia();
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/projects/:projectId/tasks', name: 'project-tasks', component: RouteStub },
+      { path: '/projects/:projectId/members', name: 'project-members', component: RouteStub },
+    ],
+  });
   const wrapper = mount(ProjectOverview, {
-    props: { project },
-    global: { plugins: [pinia, PiniaColada] },
+    props: { project, ...extra },
+    global: { plugins: [pinia, PiniaColada, router] },
   });
   setActivePinia(pinia);
   return { wrapper, cache: useQueryCache() };
@@ -72,10 +87,78 @@ describe('ProjectOverview', () => {
     expect(wrapper.get('[data-testid="project-description"]').text()).toBe('Summary');
   });
 
-  it('hides an empty description', () => {
+  it('shows a placeholder for an empty description to editors only', () => {
+    for (const role of ['admin', 'staff'] as const) {
+      const { wrapper } = mountWith(makeProject({ role }));
+      expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+      expect(wrapper.get('[data-testid="project-description-empty"]').text()).toBe(
+        '説明はありません',
+      );
+    }
+
+    const { wrapper } = mountWith(makeProject({ role: 'substaff' }));
+    expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="project-description-empty"]').exists()).toBe(false);
+  });
+
+  it('labels the edit button with text', () => {
     const { wrapper } = mountWith(makeProject());
 
-    expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+    expect(wrapper.get(EDIT_PROJECT).text()).toBe('編集');
+  });
+
+  it('shows the member count and avatars linking to the members tab', () => {
+    const members = ['a', 'b', 'c'].map((id) =>
+      makeMember({ id, email: `${id}@example.com`, name: id.toUpperCase(), avatarUrl: null }),
+    );
+    const { wrapper } = mountWith(makeProject(), { members });
+
+    const link = wrapper.get('[data-testid="project-members-link"]');
+    expect(link.attributes('href')).toBe('/projects/p1/members');
+    expect(link.get('[data-testid="project-member-count"]').text()).toBe('メンバー 3 人');
+    expect(link.findAll('[data-testid="project-member-avatar"]')).toHaveLength(3);
+    expect(link.find('[data-testid="project-member-more"]').exists()).toBe(false);
+  });
+
+  it('stacks at most five avatars and shows the rest as a count', () => {
+    const members = Array.from({ length: 7 }, (_, i) =>
+      makeMember({ id: `u${i}`, email: `u${i}@example.com`, name: `User ${i}`, avatarUrl: null }),
+    );
+    const { wrapper } = mountWith(makeProject(), { members });
+
+    const link = wrapper.get('[data-testid="project-members-link"]');
+    expect(link.findAll('[data-testid="project-member-avatar"]')).toHaveLength(5);
+    expect(link.get('[data-testid="project-member-more"]').text()).toBe('+2');
+    expect(link.get('[data-testid="project-member-count"]').text()).toBe('メンバー 7 人');
+  });
+
+  it('counts open and done tasks excluding archived ones, linking to the tasks tab', () => {
+    const tasks = [
+      makeTask({ id: 't1', status: 'open' }),
+      makeTask({ id: 't2', status: 'open' }),
+      makeTask({ id: 't3', status: 'done' }),
+      makeTask({ id: 't4', status: 'open', archivedAt: ARCHIVED_AT }),
+      makeTask({ id: 't5', status: 'done', archivedAt: ARCHIVED_AT }),
+    ];
+    const { wrapper } = mountWith(makeProject(), { tasks });
+
+    const open = wrapper.get('[data-testid="project-open-tasks"]');
+    const done = wrapper.get('[data-testid="project-done-tasks"]');
+    expect(open.text()).toBe('未完了 2');
+    expect(done.text()).toBe('完了 1');
+    expect(open.attributes('href')).toBe('/projects/p1/tasks');
+    expect(done.attributes('href')).toBe('/projects/p1/tasks');
+  });
+
+  it('shows only the creation time when members and tasks are not given', () => {
+    const { wrapper } = mountWith(makeProject());
+
+    expect(wrapper.get('[data-testid="project-created-at"] time').attributes('datetime')).toBe(
+      '2026-09-01T00:00:00.000Z',
+    );
+    expect(wrapper.find('[data-testid="project-members-link"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="project-open-tasks"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="project-done-tasks"]').exists()).toBe(false);
   });
 
   it('hides the edit button for substaff', () => {

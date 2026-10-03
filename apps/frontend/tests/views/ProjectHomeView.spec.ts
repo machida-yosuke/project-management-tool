@@ -8,13 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { plainTextToRichTextDoc, type Project, type ProjectRole, type Task } from '@pm-tool/shared';
 import type { ProjectComment } from '../../src/api/generated/models';
 import ProjectHomeView from '../../src/views/ProjectHomeView.vue';
-import { alice, bob, json, makeLabel, makeProject, makeTask, stubApi } from '../helpers/api-mock';
+import {
+  alice,
+  bob,
+  json,
+  makeLabel,
+  makeMember,
+  makeProject,
+  makeTask,
+  stubApi,
+} from '../helpers/api-mock';
 import { currentDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
 import { editorFor, replaceContent } from '../helpers/rich-text';
 
 const PATH = '/projects/p1';
 const COMMENTS = 'GET /api/projects/p1/comments?limit=5';
+const MEMBERS = 'GET /api/projects/p1/members';
 
 function makeComment(overrides: Partial<ProjectComment> = {}): ProjectComment {
   return {
@@ -38,6 +48,7 @@ function baseRoutes(
     'GET /api/projects/p1': json(makeProject({ role })),
     'GET /api/projects/p1/tasks': () => json(tasks()),
     [COMMENTS]: () => json(comments()),
+    [MEMBERS]: json([makeMember(alice, { role: 'admin', isOwner: true }), makeMember(bob)]),
   };
 }
 
@@ -115,12 +126,52 @@ describe('ProjectHomeView', () => {
     expect(paragraphs.map((p) => p.text())).toEqual(['Line 1', 'Line 2']);
   });
 
-  it('hides an empty project description', async () => {
+  it('shows a placeholder for an empty project description to editors only', async () => {
     stubApi(baseRoutes('staff'));
-
     const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);
 
     expect(wrapper.find('[data-testid="project-description"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="project-description-empty"]').text()).toBe(
+      '説明はありません',
+    );
+    wrapper.unmount();
+
+    stubApi(baseRoutes('substaff'));
+    const substaff = await mountAt(ProjectHomeView, PATH, bob);
+
+    expect(substaff.wrapper.find('[data-testid="project-description-empty"]').exists()).toBe(false);
+  });
+
+  it('shows the member and task counts in the overview', async () => {
+    stubApi(
+      baseRoutes('staff', () => [
+        makeTask({ id: 't1' }),
+        makeTask({ id: 't2', status: 'done' }),
+        makeTask({ id: 't3', status: 'done' }),
+      ]),
+    );
+
+    const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);
+
+    const members = wrapper.get('[data-testid="project-members-link"]');
+    expect(members.get('[data-testid="project-member-count"]').text()).toBe('メンバー 2 人');
+    expect(members.attributes('href')).toBe('/projects/p1/members');
+    expect(wrapper.get('[data-testid="project-open-tasks"]').text()).toBe('未完了 1');
+    expect(wrapper.get('[data-testid="project-done-tasks"]').text()).toBe('完了 2');
+  });
+
+  it('hides only the member count when members fail to load', async () => {
+    stubApi({
+      ...baseRoutes('staff'),
+      [MEMBERS]: json({ error: 'internal_error' }, 500),
+    });
+
+    const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);
+
+    expect(wrapper.get('h1').text()).toBe('Project One');
+    expect(wrapper.find('[data-testid="project-members-link"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="project-open-tasks"]').text()).toBe('未完了 0');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
   it.each(['admin', 'staff'] as const)('prefills the edit project dialog for %s', async (role) => {
@@ -364,6 +415,7 @@ describe('ProjectHomeView', () => {
       'GET /api/projects/p1': json({ error: 'not_found' }, 404),
       'GET /api/projects/p1/tasks': json({ error: 'not_found' }, 404),
       [COMMENTS]: json({ error: 'not_found' }, 404),
+      [MEMBERS]: json({ error: 'not_found' }, 404),
     });
 
     const { wrapper } = await mountAt(ProjectHomeView, PATH, bob);

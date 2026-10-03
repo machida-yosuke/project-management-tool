@@ -57,6 +57,13 @@
       "when": 1790917373610,
       "tag": "0007_noisy_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791011028444,
+      "tag": "0008_sloppy_chameleon",
+      "breakpoints": true
     }
   ]
 }
