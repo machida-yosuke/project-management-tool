@@ -13,6 +13,7 @@ const tabs = computed(() =>
     { name: 'project', label: 'ホーム', routeNames: ['project'] },
     { name: 'project-tasks', label: 'タスク', routeNames: ['project-tasks', 'task'] },
     { name: 'project-calendar', label: 'カレンダー', routeNames: ['project-calendar'] },
+    { name: 'project-manuals', label: 'マニュアル', routeNames: ['project-manuals', 'manual'] },
     { name: 'project-labels', label: 'ラベル', routeNames: ['project-labels'] },
     { name: 'project-members', label: 'メンバー', routeNames: ['project-members'] },
   ].map(({ routeNames, ...tab }) => ({

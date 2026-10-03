@@ -1,9 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
+import ManualPageView from '../views/ManualPageView.vue';
 import ProjectCalendarView from '../views/ProjectCalendarView.vue';
 import ProjectHomeView from '../views/ProjectHomeView.vue';
 import ProjectLabelsView from '../views/ProjectLabelsView.vue';
+import ProjectManualsView from '../views/ProjectManualsView.vue';
 import ProjectMembersView from '../views/ProjectMembersView.vue';
 import ProjectView from '../views/ProjectView.vue';
 import SettingsView from '../views/SettingsView.vue';
@@ -49,6 +51,18 @@ export const router = createRouter({
       path: '/projects/:projectId/calendar',
       name: 'project-calendar',
       component: ProjectCalendarView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/manuals',
+      name: 'project-manuals',
+      component: ProjectManualsView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/projects/:projectId/manuals/:manualId',
+      name: 'manual',
+      component: ManualPageView,
       meta: { requiresAuth: true },
     },
     { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },

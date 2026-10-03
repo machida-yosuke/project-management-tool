@@ -140,3 +140,23 @@ export const taskAttachments = sqliteTable(
   },
   (t) => [index('task_attachments_project_id_idx').on(t.projectId)],
 );
+
+export const manualPages = sqliteTable(
+  'manual_pages',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    // Plain text of `body` kept alongside it so keyword search can use LIKE without parsing JSON.
+    bodyText: text('body_text').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('manual_pages_project_id_idx').on(t.projectId)],
+);
