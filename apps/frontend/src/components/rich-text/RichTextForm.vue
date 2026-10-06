@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { emptyRichTextDoc, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
+import { computed, nextTick, ref } from 'vue';
+import { isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
 import { errorMessage } from '../../lib/api';
 import { useDraft } from '../../lib/drafts';
 import { prepareErrorMessage, prepareRichTextDoc } from '../../lib/rich-text-upload';
+import { Button } from '../ui/button';
 import RichTextEditor from './RichTextEditor.vue';
 
 const props = withDefaults(
@@ -54,8 +55,12 @@ async function onSubmit() {
       error.value = errorMessage(e, props.errorMessages, props.submitErrorFallback);
       return;
     }
+    if (!props.cancelable) {
+      doc.value = props.initialDoc;
+      // The reset schedules a draft save; let it schedule first so discard() cancels it.
+      await nextTick();
+    }
     discard();
-    if (!props.cancelable) doc.value = emptyRichTextDoc();
     emit('submitted');
   } finally {
     submitting.value = false;
@@ -69,7 +74,7 @@ function onCancel() {
 </script>
 
 <template>
-  <form class="rich-text-form" @submit.prevent="onSubmit">
+  <form class="flex flex-col gap-2" @submit.prevent="onSubmit">
     <slot />
     <RichTextEditor
       v-model:doc="doc"
@@ -77,31 +82,24 @@ function onCancel() {
       :placeholder="placeholder"
       :allow-images="projectId !== null"
     />
-    <p v-if="quotaExceeded" class="error" role="alert">
+    <p v-if="quotaExceeded" class="text-destructive" role="alert">
       下書きを保存できません。画像を減らしてください
     </p>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <div class="actions">
-      <button type="submit" :disabled="blocked || submitting">{{ submitLabel }}</button>
-      <button v-if="cancelable" type="button" :disabled="submitting" @click="onCancel">取消</button>
+    <p v-if="error" class="text-destructive" role="alert">{{ error }}</p>
+    <!-- With extra actions the footer is right-aligned and they lead, as in GitHub's comment box. -->
+    <div class="flex gap-2" :class="{ 'justify-end': $slots.actions }">
+      <slot name="actions" />
+      <Button type="submit" size="sm" :disabled="blocked || submitting">{{ submitLabel }}</Button>
+      <Button
+        v-if="cancelable"
+        type="button"
+        variant="outline"
+        size="sm"
+        :disabled="submitting"
+        @click="onCancel"
+      >
+        キャンセル
+      </Button>
     </div>
   </form>
 </template>
-
-<style scoped>
-.rich-text-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
-.error {
-  margin: 0;
-  color: #c00;
-}
-</style>

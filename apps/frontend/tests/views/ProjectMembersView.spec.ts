@@ -1,5 +1,5 @@
-import { flushPromises } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-utils';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ProjectInvitation, ProjectMember, ProjectRole, UserSummary } from '@pm-tool/shared';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
 import {
@@ -12,7 +12,34 @@ import {
   noContent,
   stubApi,
 } from '../helpers/api-mock';
+import { currentDialog, openDialog } from '../helpers/dialog';
 import { inputValue, mountAt } from '../helpers/mount';
+import { chooseOption } from '../helpers/reka-select';
+
+const ROLE_SELECT = '[role="combobox"][aria-label="ロール"]';
+// The role select's trigger is also a <button>, so row actions are matched separately.
+const ACTION_BUTTON = 'button:not([role="combobox"])';
+
+// Reka UI teleports the dialog to <body>, so it is looked up outside the mounted wrapper.
+function openAlertDialog(): HTMLElement {
+  const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+  if (!dialog) throw new Error('Alert dialog is not open');
+  return dialog;
+}
+
+function dialogButton(dialog: HTMLElement, label: string): HTMLElement {
+  const button = Array.from(dialog.querySelectorAll<HTMLElement>('button')).find(
+    (b) => b.textContent?.trim() === label,
+  );
+  if (!button) throw new Error(`Dialog button not found: ${label}`);
+  return button;
+}
+
+function memberRow(wrapper: VueWrapper, index: number) {
+  const row = wrapper.findAll('[data-testid="member"]')[index];
+  if (!row) throw new Error(`Member row not found: ${index}`);
+  return row;
+}
 
 const carol: UserSummary = {
   id: 'u-carol',
@@ -34,6 +61,8 @@ function hasRole(body: unknown): body is { role: ProjectRole } {
 }
 
 describe('ProjectMembersView', () => {
+  enableAutoUnmount(afterEach);
+
   it('shows admin controls except for the owner and the current user', async () => {
     stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
@@ -46,14 +75,18 @@ describe('ProjectMembersView', () => {
 
     const [ownerRow, selfRow, bobRow] = wrapper.findAll('[data-testid="member"]');
     expect(ownerRow?.text()).toContain('alice@example.com');
-    expect(ownerRow?.find('select').exists()).toBe(false);
-    expect(ownerRow?.find('button').exists()).toBe(false);
-    expect(selfRow?.find('select').exists()).toBe(true);
-    expect(selfRow?.find('button').exists()).toBe(false);
-    expect(bobRow?.find('select').exists()).toBe(true);
-    expect(bobRow?.find('button').text()).toBe('削除');
+    expect(ownerRow?.find(ROLE_SELECT).exists()).toBe(false);
+    expect(ownerRow?.find(ACTION_BUTTON).exists()).toBe(false);
+    expect(selfRow?.find(ROLE_SELECT).exists()).toBe(true);
+    expect(selfRow?.find(ACTION_BUTTON).exists()).toBe(false);
+    expect(bobRow?.find(ROLE_SELECT).exists()).toBe(true);
+    expect(bobRow?.find(ACTION_BUTTON).text()).toBe('削除');
 
-    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
+    const dialog = await openDialog(wrapper, '招待する');
+    expect(dialog.get('h2').text()).toBe('招待する');
+    expect(dialog.text()).toContain('暗証番号は招待相手に別の手段で伝えてください');
+    expect(dialog.find('[data-testid="invite-form"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="pending-invitation"]').text()).toContain('dave@example.com');
   });
 
@@ -67,7 +100,7 @@ describe('ProjectMembersView', () => {
     await flushPromises();
 
     expect(wrapper.findAll('[data-testid="member"]')).toHaveLength(3);
-    expect(wrapper.find('select').exists()).toBe(false);
+    expect(wrapper.find('[role="combobox"]').exists()).toBe(false);
     expect(wrapper.find('button').exists()).toBe(false);
     expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
     expect(requests.mock.calls.some(([req]) => req.path.endsWith('/invitations'))).toBe(false);
@@ -82,7 +115,10 @@ describe('ProjectMembersView', () => {
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', bob);
     await flushPromises();
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('プロジェクトが見つかりません');
+    expect(wrapper.get('[data-testid="project-not-found"]').text()).toContain(
+      'プロジェクトが見つかりません',
+    );
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="member"]').exists()).toBe(false);
   });
 
@@ -101,10 +137,11 @@ describe('ProjectMembersView', () => {
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
     await flushPromises();
-    await wrapper.get('input[aria-label="メールアドレス"]').setValue('erin@example.com');
-    await wrapper.get('select[aria-label="招待するロール"]').setValue('substaff');
-    await wrapper.get('input[aria-label="暗証番号"]').setValue('s3cret');
-    await wrapper.get('[data-testid="invite-form"]').trigger('submit');
+    const dialog = await openDialog(wrapper, '招待する');
+    await dialog.get('input[aria-label="メールアドレス"]').setValue('erin@example.com');
+    await chooseOption(dialog.get('[aria-label="招待するロール"]'), 'サブスタッフ');
+    await dialog.get('input[aria-label="暗証番号"]').setValue('s3cret');
+    await dialog.get('[data-testid="invite-form"]').trigger('submit');
     await flushPromises();
 
     const postCall = requests.mock.calls.find(([req]) => req.method === 'POST');
@@ -113,12 +150,16 @@ describe('ProjectMembersView', () => {
       role: 'substaff',
       passcode: 's3cret',
     });
+    expect(currentDialog()).toBeNull();
     expect(wrapper.get('[data-testid="pending-invitation"]').text()).toContain('erin@example.com');
-    expect(inputValue(wrapper.get('input[aria-label="暗証番号"]'))).toBe('');
     expect(wrapper.text()).not.toContain('s3cret');
+    const reopened = await openDialog(wrapper, '招待する');
+    expect(inputValue(reopened.get('input[aria-label="メールアドレス"]'))).toBe('');
+    expect(reopened.get('[aria-label="招待するロール"]').text()).toBe('スタッフ');
+    expect(inputValue(reopened.get('input[aria-label="暗証番号"]'))).toBe('');
   });
 
-  it('shows a message when the invitee is already a member', async () => {
+  it('shows a message in the dialog when the invitee is already a member', async () => {
     stubApi({
       'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
       'GET /api/projects/p1/members': json(initialMembers()),
@@ -128,12 +169,16 @@ describe('ProjectMembersView', () => {
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
     await flushPromises();
-    await wrapper.get('input[aria-label="メールアドレス"]').setValue('bob@example.com');
-    await wrapper.get('input[aria-label="暗証番号"]').setValue('1234');
-    await wrapper.get('[data-testid="invite-form"]').trigger('submit');
+    const dialog = await openDialog(wrapper, '招待する');
+    await dialog.get('input[aria-label="メールアドレス"]').setValue('bob@example.com');
+    await dialog.get('input[aria-label="暗証番号"]').setValue('1234');
+    await dialog.get('[data-testid="invite-form"]').trigger('submit');
     await flushPromises();
 
-    expect(wrapper.get('[role="alert"]').text()).toContain('すでにメンバーです');
+    expect(currentDialog()).not.toBeNull();
+    expect(dialog.get('[role="alert"]').text()).toContain('すでにメンバーです');
+    expect(inputValue(dialog.get('input[aria-label="メールアドレス"]'))).toBe('bob@example.com');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 
   it('changes a role, removes a member and cancels an invitation', async () => {
@@ -161,14 +206,21 @@ describe('ProjectMembersView', () => {
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
     await flushPromises();
-    const bobRow = () => wrapper.findAll('[data-testid="member"]')[2];
+    const bobRow = () => memberRow(wrapper, 2);
 
-    await bobRow()?.get('select').setValue('substaff');
-    await flushPromises();
-    expect(inputValue(bobRow()?.get('select'))).toBe('substaff');
+    await chooseOption(bobRow().get(ROLE_SELECT), 'サブスタッフ');
+    expect(bobRow().get(ROLE_SELECT).text()).toBe('サブスタッフ');
 
-    await bobRow()?.get('button').trigger('click');
+    await bobRow().get(ACTION_BUTTON).trigger('click');
     await flushPromises();
+    const dialog = openAlertDialog();
+    expect(dialog.textContent).toContain('メンバーを削除');
+    expect(dialog.textContent).toContain('Bob');
+    expect(requests.mock.calls.some(([req]) => req.method === 'DELETE')).toBe(false);
+
+    dialogButton(dialog, '削除').click();
+    await flushPromises();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
     expect(wrapper.findAll('[data-testid="member"]')).toHaveLength(2);
 
     await wrapper.get('[data-testid="pending-invitation"] button').trigger('click');
@@ -178,6 +230,26 @@ describe('ProjectMembersView', () => {
     const patchCall = requests.mock.calls.find(([req]) => req.method === 'PATCH');
     expect(patchCall?.[0].body).toEqual({ role: 'substaff' });
     expect(requests.mock.calls.filter(([req]) => req.path === '/api/projects/p1')).toHaveLength(1);
+  });
+
+  it('keeps the member when removal is cancelled', async () => {
+    const requests = stubApi({
+      'GET /api/projects/p1': json(makeProject({ role: 'admin' })),
+      'GET /api/projects/p1/members': json(initialMembers()),
+      'GET /api/projects/p1/invitations': json([]),
+    });
+
+    const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
+    await flushPromises();
+    await memberRow(wrapper, 2).get(ACTION_BUTTON).trigger('click');
+    await flushPromises();
+
+    dialogButton(openAlertDialog(), 'キャンセル').click();
+    await flushPromises();
+
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(wrapper.findAll('[data-testid="member"]')).toHaveLength(3);
+    expect(requests.mock.calls.some(([req]) => req.method === 'DELETE')).toBe(false);
   });
 
   it('reloads the project after demoting yourself and hides invitation UI', async () => {
@@ -198,15 +270,14 @@ describe('ProjectMembersView', () => {
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', carol);
     await flushPromises();
-    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(true);
+    expect(wrapper.findAll('button').map((b) => b.text())).toContain('招待する');
 
-    await wrapper.findAll('[data-testid="member"]')[1]?.get('select').setValue('staff');
-    await flushPromises();
+    await chooseOption(memberRow(wrapper, 1).get(ROLE_SELECT), 'スタッフ');
 
     expect(requests.mock.calls.filter(([req]) => req.path === '/api/projects/p1')).toHaveLength(2);
-    expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
+    expect(wrapper.findAll('button').map((b) => b.text())).not.toContain('招待する');
     expect(wrapper.find('[data-testid="pending-invitation"]').exists()).toBe(false);
-    expect(wrapper.find('select').exists()).toBe(false);
+    expect(wrapper.find('[role="combobox"]').exists()).toBe(false);
   });
 
   it('shows a message when changing the owner role is rejected', async () => {
@@ -219,8 +290,7 @@ describe('ProjectMembersView', () => {
 
     const { wrapper } = await mountAt(ProjectMembersView, '/projects/p1/members', alice);
     await flushPromises();
-    await wrapper.findAll('[data-testid="member"]')[2]?.get('select').setValue('admin');
-    await flushPromises();
+    await chooseOption(memberRow(wrapper, 2).get(ROLE_SELECT), '管理者');
 
     expect(wrapper.get('[role="alert"]').text()).toBe('オーナーのロールは変更できません');
   });

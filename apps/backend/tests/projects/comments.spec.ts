@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyRichTextDoc, type Task, type TaskComment } from '@pm-tool/shared';
+import type { ProjectComment } from '../../src/projects/comments';
 import { api, json, richText, setupProject } from './helpers';
 
 async function setupTask() {
@@ -163,5 +164,97 @@ describe('PATCH comment', () => {
       expect(res.status).toBe(400);
       expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
     }
+  });
+});
+
+describe('GET project comments', () => {
+  async function postComment(
+    fixture: Awaited<ReturnType<typeof setupTask>>,
+    taskId: string,
+    text: string,
+  ): Promise<TaskComment> {
+    const path = `/api/projects/${fixture.project.id}/tasks/${taskId}/comments`;
+    return json<TaskComment>(
+      await api(fixture.admin, path, { method: 'POST', body: { body: richText(text) } }),
+    );
+  }
+
+  it('lists comments across unarchived tasks, newest first with the task attached', async () => {
+    const fixture = await setupTask();
+    const { admin, substaff, project, task } = fixture;
+    const archivedTask = await json<Task>(
+      await api(admin, `/api/projects/${project.id}/tasks`, {
+        method: 'POST',
+        body: { title: 'Archived' },
+      }),
+    );
+    const first = await postComment(fixture, task.id, 'one');
+    const second = await postComment(fixture, archivedTask.id, 'two');
+    const third = await postComment(fixture, task.id, 'three');
+    const archive = await api(
+      admin,
+      `/api/projects/${project.id}/tasks/${archivedTask.id}/archive`,
+      {
+        method: 'POST',
+      },
+    );
+    expect(archive.status).toBe(200);
+
+    const other = await setupTask();
+    await postComment(other, other.task.id, 'elsewhere');
+
+    const res = await api(substaff, `/api/projects/${project.id}/comments`);
+    expect(res.status).toBe(200);
+    const listed = await json<ProjectComment[]>(res);
+    expect(listed.map((c) => c.id)).toEqual([third.id, first.id]);
+    expect(listed[0]).toEqual({ ...third, task: { id: task.id, title: 'T' } });
+
+    const unarchive = await api(
+      admin,
+      `/api/projects/${project.id}/tasks/${archivedTask.id}/unarchive`,
+      { method: 'POST' },
+    );
+    expect(unarchive.status).toBe(200);
+    const restored = await json<ProjectComment[]>(
+      await api(substaff, `/api/projects/${project.id}/comments`),
+    );
+    expect(restored.map((c) => c.id)).toEqual([third.id, second.id, first.id]);
+    expect(restored[1]).toEqual({ ...second, task: { id: archivedTask.id, title: 'Archived' } });
+  });
+
+  it('applies limit, defaulting to 20', async () => {
+    const fixture = await setupTask();
+    const { admin, project, task } = fixture;
+    const posted: TaskComment[] = [];
+    for (let i = 0; i < 21; i++) posted.push(await postComment(fixture, task.id, `c${i}`));
+    const newestFirst = posted.map((c) => c.id).reverse();
+    const base = `/api/projects/${project.id}/comments`;
+
+    const byDefault = await json<ProjectComment[]>(await api(admin, base));
+    expect(byDefault.map((c) => c.id)).toEqual(newestFirst.slice(0, 20));
+    const limited = await json<ProjectComment[]>(await api(admin, `${base}?limit=2`));
+    expect(limited.map((c) => c.id)).toEqual(newestFirst.slice(0, 2));
+    const max = await json<ProjectComment[]>(await api(admin, `${base}?limit=50`));
+    expect(max).toHaveLength(21);
+  });
+
+  it('rejects a limit that is not an integer from 1 to 50', async () => {
+    const { admin, project } = await setupTask();
+    for (const limit of ['0', '51', 'abc', '1.5', '-1', '', '1e1']) {
+      const res = await api(admin, `/api/projects/${project.id}/comments?limit=${limit}`);
+      expect(res.status, `limit=${limit}`).toBe(400);
+      expect(await json<{ error: string }>(res)).toMatchObject({ error: 'validation_error' });
+    }
+  });
+
+  it('returns 404 to non-members and 401 without a session', async () => {
+    const { outsider, project } = await setupTask();
+    const path = `/api/projects/${project.id}/comments`;
+    const hidden = await api(outsider, path);
+    expect(hidden.status).toBe(404);
+    expect(await hidden.json()).toEqual({ error: 'not_found' });
+    const anonymous = await api(null, path);
+    expect(anonymous.status).toBe(401);
+    expect(await anonymous.json()).toEqual({ error: 'unauthorized' });
   });
 });

@@ -41,8 +41,10 @@
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
  * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - 画像添付のアップロード: `admin` / `staff`
+ * - マニュアルの閲覧・検索: 全ロール。作成・更新・削除: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
@@ -57,15 +59,27 @@ export * from './avatarUrl';
 export * from './calendarDate';
 export * from './createCommentRequest';
 export * from './createInvitationRequest';
+export * from './createLabelRequest';
+export * from './createManualPageRequest';
 export * from './createProjectRequest';
 export * from './createTaskRequest';
 export * from './error';
 export * from './forbiddenOrIpBannedResponse';
 export * from './googleAuthParams';
 export * from './ipBannedResponse';
+export * from './labelColor';
+export * from './labelNameTakenResponse';
+export * from './listManualPagesParams';
+export * from './listProjectCommentsParams';
 export * from './listTasksParams';
+export * from './manualPage';
+export * from './manualPageSummary';
+export * from './myTask';
+export * from './myTaskProject';
 export * from './notFoundResponse';
 export * from './project';
+export * from './projectComment';
+export * from './projectCommentTask';
 export * from './projectInvitation';
 export * from './projectMember';
 export * from './projectRole';
@@ -77,12 +91,14 @@ export * from './richTextMarkAttrs';
 export * from './richTextNode';
 export * from './richTextNodeAttrs';
 export * from './task';
-export * from './taskColor';
 export * from './taskComment';
+export * from './taskLabel';
 export * from './taskStatus';
 export * from './timestamp';
 export * from './unauthorizedResponse';
 export * from './updateCommentRequest';
+export * from './updateLabelRequest';
+export * from './updateManualPageRequest';
 export * from './updateMemberRoleRequest';
 export * from './updateMeRequest';
 export * from './updateProjectRequest';

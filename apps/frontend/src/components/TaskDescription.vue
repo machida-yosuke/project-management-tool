@@ -7,6 +7,8 @@ import { draftKeys } from '../lib/drafts';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
 import RichTextContent from './rich-text/RichTextContent.vue';
 import RichTextForm from './rich-text/RichTextForm.vue';
+import TimelineItem from './task/TimelineItem.vue';
+import { Button } from './ui/button';
 
 const props = defineProps<{ task: Task; editable: boolean }>();
 
@@ -33,7 +35,28 @@ function formatDate(iso: string) {
 </script>
 
 <template>
-  <div class="task-description">
+  <TimelineItem class="task-description" :author="task.createdBy" :created-at="task.createdAt">
+    <template #meta>
+      <span
+        v-if="task.descriptionEditedAt"
+        class="text-muted-foreground"
+        data-testid="description-edited"
+        :title="formatDate(task.descriptionEditedAt)"
+      >
+        編集済み
+      </span>
+    </template>
+    <template #actions>
+      <Button
+        v-if="editable && !editing"
+        type="button"
+        variant="ghost"
+        size="sm"
+        @click="editing = true"
+      >
+        編集
+      </Button>
+    </template>
     <RichTextForm
       v-if="editing"
       :project-id="task.projectId"
@@ -48,41 +71,11 @@ function formatDate(iso: string) {
       @submitted="editing = false"
       @cancel="editing = false"
     />
-    <template v-else>
-      <RichTextContent
-        v-if="!isRichTextDocEmpty(task.description)"
-        data-testid="description"
-        :doc="task.description"
-      />
-      <div class="meta">
-        <span
-          v-if="task.descriptionEditedAt"
-          class="muted"
-          data-testid="description-edited"
-          :title="formatDate(task.descriptionEditedAt)"
-        >
-          更新履歴あり
-        </span>
-        <button v-if="editable" type="button" @click="editing = true">本文を編集</button>
-      </div>
-    </template>
-  </div>
+    <RichTextContent
+      v-else-if="!isRichTextDocEmpty(task.description)"
+      data-testid="description"
+      :doc="task.description"
+    />
+    <p v-else class="text-sm text-muted-foreground italic">本文はありません</p>
+  </TimelineItem>
 </template>
-
-<style scoped>
-.task-description {
-  margin: 8px 0 12px;
-}
-
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: 0.85em;
-}
-
-.muted {
-  color: #666;
-}
-</style>

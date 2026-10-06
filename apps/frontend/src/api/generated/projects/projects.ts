@@ -41,8 +41,10 @@
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
  * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - 画像添付のアップロード: `admin` / `staff`
+ * - マニュアルの閲覧・検索: 全ロール。作成・更新・削除: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
@@ -76,7 +78,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   /**
- * 作成日時の昇順。`role` は自分のロール。
+ * 作成日時の昇順。`role` は自分のロール。完了済みのプロジェクトも含む。
  * @summary 自分が所属するプロジェクトの一覧を取得する
  */
 export const listProjects = (
@@ -212,8 +214,62 @@ export function getDeleteProjectMutationOptions<TError = globalThis.Error, TCont
 export function useDeleteProject<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof deleteProject>>, DeleteProjectMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof deleteProject>[1]; }) {
   return useColadaMutation(getDeleteProjectMutationOptions(coladaOptions));
 }
+/**
+ * `admin` のみ。冪等で、既にその状態なら何も変えず現在のプロジェクトを返す。完了後も閲覧・編集の権限は変わらない。
+ * @summary プロジェクトを完了にする
+ */
+export const archiveProject = (
+    projectId: string,
+ options?: SecondParameter<typeof customInstance<Project>>,) => {
+      return customInstance<Project>(
+      {url: `/api/projects/${projectId}/archive`, method: 'POST'
+    },
+      options);
+    }
+
+export type ArchiveProjectMutationVariables = { projectId: Parameters<typeof archiveProject>[0] };
+
+export function getArchiveProjectMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof archiveProject>>, ArchiveProjectMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof archiveProject>[1]; }): UseMutationOptions<Awaited<ReturnType<typeof archiveProject>>, ArchiveProjectMutationVariables, TError, TContext> {
+  const coladaRequest = archiveProject;
+  return {
+    ...coladaOptions?.mutation,
+    mutation: (coladaVariables: ArchiveProjectMutationVariables) => coladaRequest(coladaVariables.projectId, coladaOptions?.request),
+  };
+}
+
+export function useArchiveProject<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof archiveProject>>, ArchiveProjectMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof archiveProject>[1]; }) {
+  return useColadaMutation(getArchiveProjectMutationOptions(coladaOptions));
+}
+/**
+ * `admin` のみ。冪等で、既にその状態なら何も変えず現在のプロジェクトを返す。完了後も閲覧・編集の権限は変わらない。
+ * @summary プロジェクトを進行中に戻す
+ */
+export const unarchiveProject = (
+    projectId: string,
+ options?: SecondParameter<typeof customInstance<Project>>,) => {
+      return customInstance<Project>(
+      {url: `/api/projects/${projectId}/unarchive`, method: 'POST'
+    },
+      options);
+    }
+
+export type UnarchiveProjectMutationVariables = { projectId: Parameters<typeof unarchiveProject>[0] };
+
+export function getUnarchiveProjectMutationOptions<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof unarchiveProject>>, UnarchiveProjectMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof unarchiveProject>[1]; }): UseMutationOptions<Awaited<ReturnType<typeof unarchiveProject>>, UnarchiveProjectMutationVariables, TError, TContext> {
+  const coladaRequest = unarchiveProject;
+  return {
+    ...coladaOptions?.mutation,
+    mutation: (coladaVariables: UnarchiveProjectMutationVariables) => coladaRequest(coladaVariables.projectId, coladaOptions?.request),
+  };
+}
+
+export function useUnarchiveProject<TError = globalThis.Error, TContext extends Record<string, unknown> = Record<string, never>>(coladaOptions?: { mutation?: Omit<UseMutationOptions<Awaited<ReturnType<typeof unarchiveProject>>, UnarchiveProjectMutationVariables, TError, TContext>, 'mutation'>; request?: Parameters<typeof unarchiveProject>[1]; }) {
+  return useColadaMutation(getUnarchiveProjectMutationOptions(coladaOptions));
+}
 export type ListProjectsResult = NonNullable<Awaited<ReturnType<typeof listProjects>>>
 export type CreateProjectResult = NonNullable<Awaited<ReturnType<typeof createProject>>>
 export type GetProjectResult = NonNullable<Awaited<ReturnType<typeof getProject>>>
 export type UpdateProjectResult = NonNullable<Awaited<ReturnType<typeof updateProject>>>
 export type DeleteProjectResult = NonNullable<Awaited<ReturnType<typeof deleteProject>>>
+export type ArchiveProjectResult = NonNullable<Awaited<ReturnType<typeof archiveProject>>>
+export type UnarchiveProjectResult = NonNullable<Awaited<ReturnType<typeof unarchiveProject>>>

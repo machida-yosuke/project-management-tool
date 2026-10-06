@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { env } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
-import { emptyRichTextDoc, type Project } from '@pm-tool/shared';
+import { DEFAULT_LABELS, emptyRichTextDoc, type Project, type TaskLabel } from '@pm-tool/shared';
 import { projects } from '../../src/db/schema';
 import {
   addMember,
@@ -37,6 +37,14 @@ describe('projects routes', () => {
     expect(members).toEqual([
       expect.objectContaining({ userId: owner.id, isOwner: true, role: 'admin' }),
     ]);
+  });
+
+  it('creates the default labels with a new project', async () => {
+    const owner = await createUser('owner');
+    const project = await createProjectAs(owner);
+    const labels = await json<TaskLabel[]>(await api(owner, `/api/projects/${project.id}/labels`));
+    expect(labels.map((l) => ({ name: l.name, color: l.color }))).toEqual(DEFAULT_LABELS);
+    expect(labels.map((l) => l.projectId)).toEqual([project.id, project.id, project.id]);
   });
 
   it('lists only projects the user belongs to, with their own role', async () => {
@@ -155,5 +163,65 @@ describe('projects routes', () => {
     expect(await json<Project[]>(await api(staff, '/api/projects'))).toEqual([
       expect.objectContaining({ id: other.id }),
     ]);
+  });
+
+  it('lets only admins archive and unarchive, idempotently', async () => {
+    const { project, admin, staff, substaff } = await setupProject();
+    const base = `/api/projects/${project.id}`;
+    expect(project.archivedAt).toBeNull();
+
+    for (const user of [staff, substaff]) {
+      for (const action of ['archive', 'unarchive']) {
+        expect((await api(user, `${base}/${action}`, { method: 'POST' })).status).toBe(403);
+      }
+    }
+
+    const archivedRes = await api(admin, `${base}/archive`, { method: 'POST' });
+    expect(archivedRes.status).toBe(200);
+    const archived = await json<Project>(archivedRes);
+    expect(archived).toMatchObject({ id: project.id, role: 'admin' });
+    expect(archived.archivedAt).toEqual(new Date(archived.archivedAt!).toISOString());
+
+    const again = await json<Project>(await api(admin, `${base}/archive`, { method: 'POST' }));
+    expect(again.archivedAt).toBe(archived.archivedAt);
+
+    const staffView = await json<Project>(await api(staff, base));
+    expect(staffView).toMatchObject({ archivedAt: archived.archivedAt, role: 'staff' });
+    expect(await json<Project[]>(await api(staff, '/api/projects'))).toEqual([
+      expect.objectContaining({ id: project.id, archivedAt: archived.archivedAt }),
+    ]);
+
+    const restoredRes = await api(admin, `${base}/unarchive`, { method: 'POST' });
+    expect(restoredRes.status).toBe(200);
+    expect((await json<Project>(restoredRes)).archivedAt).toBeNull();
+    const restoredAgain = await api(admin, `${base}/unarchive`, { method: 'POST' });
+    expect(restoredAgain.status).toBe(200);
+    expect((await json<Project>(restoredAgain)).archivedAt).toBeNull();
+  });
+
+  it('returns 404 for archive and unarchive to non-members and unknown projects', async () => {
+    const { project, outsider, admin } = await setupProject();
+    for (const action of ['archive', 'unarchive']) {
+      const res = await api(outsider, `/api/projects/${project.id}/${action}`, { method: 'POST' });
+      expect(res.status).toBe(404);
+      const missing = await api(admin, `/api/projects/does-not-exist/${action}`, {
+        method: 'POST',
+      });
+      expect(missing.status).toBe(404);
+    }
+    expect((await json<Project>(await api(admin, `/api/projects/${project.id}`))).archivedAt).toBe(
+      null,
+    );
+  });
+
+  it('keeps archived projects editable', async () => {
+    const { project, staff, admin } = await setupProject();
+    await api(admin, `/api/projects/${project.id}/archive`, { method: 'POST' });
+    const res = await api(staff, `/api/projects/${project.id}`, {
+      method: 'PATCH',
+      body: { name: 'Still editable' },
+    });
+    expect(res.status).toBe(200);
+    expect((await json<Project>(res)).name).toBe('Still editable');
   });
 });

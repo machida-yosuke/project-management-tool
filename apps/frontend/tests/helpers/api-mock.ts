@@ -12,8 +12,10 @@ import {
   type ProjectInvitation,
   type ProjectMember,
   type Task,
+  type TaskLabel,
   type UserSummary,
 } from '@pm-tool/shared';
+import type { ManualPage } from '../../src/api/generated/models';
 import { axiosInstance } from '../../src/lib/api';
 
 export const API_BASE = 'https://localhost:8787';
@@ -130,6 +132,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     description: emptyRichTextDoc(),
     ownerId: alice.id,
     role: 'admin',
+    archivedAt: null,
     createdAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
@@ -146,8 +149,32 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     assignee: null,
     startDate: null,
     endDate: null,
-    color: 'gray',
+    label: null,
     archivedAt: null,
+    createdBy: alice,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeLabel(overrides: Partial<TaskLabel> = {}): TaskLabel {
+  return {
+    id: 'l1',
+    projectId: 'p1',
+    name: 'バグ報告',
+    color: '#e5484d',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function makeManualPage(overrides: Partial<ManualPage> = {}): ManualPage {
+  return {
+    id: 'm1',
+    projectId: 'p1',
+    title: 'Onboarding',
+    body: emptyRichTextDoc(),
     createdBy: alice,
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',

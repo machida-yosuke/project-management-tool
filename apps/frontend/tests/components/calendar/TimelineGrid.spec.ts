@@ -1,10 +1,11 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '@pm-tool/shared';
 import TimelineGrid from '../../../src/components/calendar/TimelineGrid.vue';
+import { LONG_PRESS_MS } from '../../../src/components/calendar/useBandDrag';
 import { MEASURE_CELLS_KEY, type DayCellRect } from '../../../src/lib/calendar-drag';
 import { addDays } from '../../../src/lib/dates';
-import { makeTask } from '../../helpers/api-mock';
+import { makeLabel, makeTask } from '../../helpers/api-mock';
 
 const COLUMN = 40;
 const LABEL = 200;
@@ -33,7 +34,6 @@ function mountGrid(
       tasks,
       editable: true,
       today: '2026-09-30',
-      selectedTaskId: null,
       dateOverrides: {},
       columnWidth: COLUMN,
       ...props,
@@ -42,10 +42,19 @@ function mountGrid(
   });
 }
 
-const task = makeTask({ id: 't1', startDate: '2026-09-29', endDate: '2026-10-01', color: 'blue' });
+const task = makeTask({
+  id: 't1',
+  startDate: '2026-09-29',
+  endDate: '2026-10-01',
+  label: makeLabel({ color: '#3e63dd' }),
+});
 
 function pointer(clientX: number) {
   return { clientX, clientY: 10, pointerId: 1, button: 0 };
+}
+
+function touch(clientX: number, clientY = 10) {
+  return { clientX, clientY, pointerId: 2, button: 0, pointerType: 'touch' };
 }
 
 function band(wrapper: VueWrapper) {
@@ -98,6 +107,17 @@ describe('TimelineGrid', () => {
     expect(style).toContain('left: 40px');
     expect(style).toContain('width: 120px');
     expect(band(wrapper).text()).toBe(task.title);
+  });
+
+  it('colors the band by its label and falls back to gray without one', () => {
+    const wrapper = mountGrid([
+      task,
+      makeTask({ id: 't2', startDate: '2026-09-29', endDate: '2026-09-29' }),
+    ]);
+    const [labeled, unlabeled] = wrapper.findAll('[data-testid="band"]');
+
+    expect(labeled?.attributes('style')).toContain('background-color: #3e63dd');
+    expect(unlabeled?.attributes('style')).toContain('background-color: #8b8d98');
   });
 
   it('opens a task from its row label', async () => {
@@ -268,5 +288,86 @@ describe('TimelineGrid', () => {
     expect(late?.find('[data-testid="handle-start"]').exists()).toBe(true);
     expect(late?.attributes('style')).toContain('left: 480px');
     expect(late?.attributes('style')).toContain('width: 80px');
+  });
+
+  describe('with touch', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('opens the task on a tap released before the long press', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS - 1);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+
+      expect(wrapper.emitted('open')).toEqual([['t1']]);
+      expect(wrapper.emitted('commit')).toBeUndefined();
+      expect(band(wrapper).attributes('style')).toContain('left: 40px');
+    });
+
+    it('leaves the gesture to scrolling when the finger moves before the long press', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      await grid(wrapper).trigger('pointermove', touch(x(1), 40));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointermove', touch(x(3), 40));
+      await grid(wrapper).trigger('pointerup', touch(x(3), 40));
+
+      expect(wrapper.emitted('open')).toBeUndefined();
+      expect(wrapper.emitted('commit')).toBeUndefined();
+      expect(band(wrapper).classes()).not.toContain('dragging');
+    });
+
+    it('drags after a long press and commits the new dates', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointermove', touch(x(3)));
+
+      expect(band(wrapper).classes()).toContain('dragging');
+
+      await grid(wrapper).trigger('pointerup', touch(x(3)));
+
+      expect(wrapper.emitted('commit')).toEqual([
+        [{ taskId: 't1', startDate: '2026-10-01', endDate: '2026-10-03' }],
+      ]);
+      expect(wrapper.emitted('open')).toBeUndefined();
+    });
+
+    it('does nothing when released after a long press without moving', async () => {
+      const wrapper = mountGrid([task]);
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+
+      expect(wrapper.emitted('open')).toBeUndefined();
+      expect(wrapper.emitted('commit')).toBeUndefined();
+    });
+
+    it('blocks touch scrolling only while a long-press drag is active', async () => {
+      const wrapper = mountGrid([task]);
+      const scroll = () => {
+        const event = new Event('touchmove', { cancelable: true });
+        grid(wrapper).element.dispatchEvent(event);
+        return event.defaultPrevented;
+      };
+
+      await band(wrapper).trigger('pointerdown', touch(x(1)));
+      expect(scroll()).toBe(false);
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      expect(scroll()).toBe(true);
+      await grid(wrapper).trigger('pointerup', touch(x(1)));
+      expect(scroll()).toBe(false);
+    });
   });
 });

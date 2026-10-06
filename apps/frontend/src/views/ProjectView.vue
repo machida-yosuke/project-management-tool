@@ -1,84 +1,116 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { canEdit, isRichTextDocEmpty, type RichTextDoc } from '@pm-tool/shared';
+import { CircleCheck, CircleDot } from '@lucide/vue';
 import {
-  TASK_COLORS,
-  canEdit,
-  emptyRichTextDoc,
-  isRichTextDocEmpty,
-  type RichTextDoc,
-} from '@pm-tool/shared';
-import {
-  useArchiveTask,
   useCreateTask,
   useGetProject,
-  useListComments,
+  useListLabels,
   useListMembers,
   useListTasks,
-  useUnarchiveTask,
-  useUpdateTask,
 } from '../api/generated';
-import type { Task, UpdateTaskRequest } from '../api/generated/models';
-import CommentThread from '../components/CommentThread.vue';
-import RichTextContent from '../components/rich-text/RichTextContent.vue';
+import type { Task, TaskStatus } from '../api/generated/models';
 import RichTextForm from '../components/rich-text/RichTextForm.vue';
-import TaskDescription from '../components/TaskDescription.vue';
-import TaskTitle from '../components/TaskTitle.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import RelativeTime from '../components/task/RelativeTime.vue';
+import TaskFilterBar from '../components/task/TaskFilterBar.vue';
+import TaskLabelPill from '../components/task/TaskLabelPill.vue';
+import TaskStateIcon from '../components/task/TaskStateIcon.vue';
+import EmptyState from '../components/layout/EmptyState.vue';
+import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
+import { Button } from '../components/ui/button';
+import { Checkbox } from '../components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { ApiRequestError, errorMessage } from '../lib/api';
 import { draftKeys } from '../lib/drafts';
-import { eventValue } from '../lib/form';
+import { dueStateClass } from '../lib/due-state';
+import { TASK_ARCHIVE_HELP } from '../lib/help-texts';
 import { listTasksKeyPrefix, useInvalidate } from '../lib/query';
-import { TASK_COLOR_HEX, TASK_COLOR_LABELS } from '../lib/task-colors';
-import { useAuthStore } from '../stores/auth';
+import { taskDescriptionTemplate } from '../lib/rich-text-templates';
+import {
+  applyTaskFilters,
+  filtersFromQuery,
+  isFiltering,
+  sortFromQuery,
+  sortTasks,
+  withTaskQuery,
+  type TaskFilters,
+  type TaskSort,
+} from '../lib/task-filters';
 
 const route = useRoute();
+const router = useRouter();
 const invalidate = useInvalidate();
-const authStore = useAuthStore();
 
 const projectId = computed(() => String(route.params.projectId));
-const selectedTaskId = ref<string | null>(null);
 const includeArchived = ref(false);
+const archivedHelpOpen = ref(false);
+const statusFilter = ref<TaskStatus>('open');
 
 const projectQuery = useGetProject(projectId);
 // Omit the param when off so the default request stays `GET /tasks` with no query string.
 const tasksQuery = useListTasks(projectId, () => ({
   includeArchived: includeArchived.value || undefined,
 }));
+
 const membersQuery = useListMembers(projectId);
-const commentsQuery = useListComments(
-  projectId,
-  () => selectedTaskId.value ?? '',
-  () => ({ query: { enabled: selectedTaskId.value !== null } }),
-);
+const labelsQuery = useListLabels(projectId);
 
 const project = computed(() => projectQuery.data.value ?? null);
-const tasks = computed(() => tasksQuery.data.value ?? []);
 const members = computed(() => membersQuery.data.value ?? []);
-const comments = computed(() => commentsQuery.data.value ?? []);
-const selectedTask = computed(
-  () => tasks.value.find((task) => task.id === selectedTaskId.value) ?? null,
+const labels = computed(() => labelsQuery.data.value ?? []);
+const filters = computed(() => filtersFromQuery(route.query));
+const sort = computed(() => sortFromQuery(route.query));
+const tasks = computed(() => applyTaskFilters(tasksQuery.data.value ?? [], filters.value));
+const openCount = computed(() => tasks.value.filter((t) => t.status === 'open').length);
+const doneCount = computed(() => tasks.value.length - openCount.value);
+const visibleTasks = computed(() =>
+  sortTasks(
+    tasks.value.filter((t) => t.status === statusFilter.value),
+    sort.value,
+  ),
 );
+const emptyMessage = computed(() => {
+  if (isFiltering(filters.value)) return '条件に一致するタスクはありません';
+  return statusFilter.value === 'open'
+    ? '未完了のタスクはありません'
+    : '完了したタスクはありません';
+});
+
 const editable = computed(() => (project.value ? canEdit(project.value.role) : false));
 
+function updateTaskQuery(nextFilters: TaskFilters, nextSort: TaskSort) {
+  return router.replace({ query: withTaskQuery(route.query, nextFilters, nextSort) });
+}
+
+const firstLoadError = computed(() => projectQuery.error.value ?? tasksQuery.error.value);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e = projectQuery.error.value ?? tasksQuery.error.value ?? membersQuery.error.value;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'プロジェクトの読み込みに失敗しました') : '';
 });
-const commentsError = computed(() => {
-  const e = commentsQuery.error.value;
-  return e ? errorMessage(e, {}, 'コメントの読み込みに失敗しました') : '';
-});
-const actionError = ref('');
 const newTitle = ref('');
+const createTaskOpen = ref(false);
+const creatingTask = ref(false);
 
 watch(projectId, () => {
-  selectedTaskId.value = null;
   newTitle.value = '';
+  createTaskOpen.value = false;
 });
 
 function invalidateTasks() {
@@ -86,367 +118,193 @@ function invalidateTasks() {
 }
 
 const createTaskMutation = useCreateTask({ mutation: { onSuccess: invalidateTasks } });
-const updateTaskMutation = useUpdateTask({ mutation: { onSuccess: invalidateTasks } });
-const archiveTaskMutation = useArchiveTask({
-  mutation: {
-    onSuccess: (_, vars) => {
-      if (!includeArchived.value && selectedTaskId.value === vars.taskId) {
-        selectedTaskId.value = null;
-      }
-      return invalidateTasks();
-    },
-  },
-});
-const unarchiveTaskMutation = useUnarchiveTask({ mutation: { onSuccess: invalidateTasks } });
-
-async function runAction(action: () => Promise<unknown>, messages: Record<string, string> = {}) {
-  actionError.value = '';
-  try {
-    await action();
-  } catch (e) {
-    actionError.value = errorMessage(e, messages, '操作に失敗しました');
-  }
-}
 
 const CREATE_TASK_ERRORS = { validation_error: 'タイトルは1〜200文字で入力してください' };
 
 async function createTask(description: RichTextDoc) {
-  const created = await createTaskMutation.mutateAsync({
-    projectId: projectId.value,
-    createTaskRequest: {
-      title: newTitle.value.trim(),
-      ...(isRichTextDocEmpty(description) ? {} : { description }),
-    },
-  });
-  newTitle.value = '';
-  selectedTaskId.value = created.id;
-}
-
-function toggleDone(task: Task) {
-  return runAction(() =>
-    updateTaskMutation.mutateAsync({
+  creatingTask.value = true;
+  try {
+    await createTaskMutation.mutateAsync({
       projectId: projectId.value,
-      taskId: task.id,
-      updateTaskRequest: { status: task.status === 'done' ? 'open' : 'done' },
-    }),
-  );
-}
-
-function assign(task: Task, event: Event) {
-  const value = eventValue(event);
-  return runAction(
-    () =>
-      updateTaskMutation.mutateAsync({
-        projectId: projectId.value,
-        taskId: task.id,
-        updateTaskRequest: { assigneeId: value === '' ? null : value },
-      }),
-    { assignee_not_member: '担当者はプロジェクトメンバーから選んでください' },
-  );
-}
-
-function changeDate(task: Task, field: 'startDate' | 'endDate', event: Event) {
-  const value = eventValue(event);
-  let range: Pick<UpdateTaskRequest, 'startDate' | 'endDate'>;
-  if (value === '') {
-    range = { startDate: null, endDate: null };
-  } else if (field === 'startDate') {
-    range = { startDate: value, endDate: task.endDate ?? value };
-  } else {
-    range = { startDate: task.startDate ?? value, endDate: value };
+      createTaskRequest: {
+        title: newTitle.value.trim(),
+        ...(isRichTextDocEmpty(description) ? {} : { description }),
+      },
+    });
+    newTitle.value = '';
+  } finally {
+    creatingTask.value = false;
   }
-  return runAction(
-    () =>
-      updateTaskMutation.mutateAsync({
-        projectId: projectId.value,
-        taskId: task.id,
-        updateTaskRequest: range,
-      }),
-    { invalid_date_range: '終了日は開始日以降にしてください' },
-  );
 }
 
-function changeColor(task: Task, event: Event) {
-  const value = eventValue(event);
-  const color = TASK_COLORS.find((c) => c === value);
-  if (!color) throw new Error(`Unknown task color: ${value}`);
-  return runAction(() =>
-    updateTaskMutation.mutateAsync({
-      projectId: projectId.value,
-      taskId: task.id,
-      updateTaskRequest: { color },
-    }),
-  );
+function onCreateTaskInteractOutside(event: Event) {
+  if (creatingTask.value) event.preventDefault();
 }
 
-function archiveTask(task: Task) {
-  return runAction(() =>
-    archiveTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
-  );
-}
-
-function unarchiveTask(task: Task) {
-  return runAction(() =>
-    unarchiveTaskMutation.mutateAsync({ projectId: projectId.value, taskId: task.id }),
-  );
-}
-
-function selectTask(task: Task) {
-  selectedTaskId.value = task.id;
+function taskPeriod(task: Task) {
+  if (!task.startDate && !task.endDate) return '';
+  return `${task.startDate ?? ''} 〜 ${task.endDate ?? ''}`.trim();
 }
 </script>
 
 <template>
   <div>
-    <p v-if="loadError" class="error" role="alert">{{ loadError }}</p>
+    <ProjectNotFound v-if="projectNotFound" />
+    <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
-      <header class="header">
-        <h2>{{ project.name }}</h2>
-        <router-link :to="{ name: 'project-members', params: { projectId: project.id } }">
-          メンバー
-        </router-link>
-        <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
-          カレンダー
-        </router-link>
-        <router-link
-          v-if="editable"
-          :to="{ name: 'project-settings', params: { projectId: project.id } }"
-        >
-          設定
-        </router-link>
-      </header>
-      <RichTextContent
-        v-if="!isRichTextDocEmpty(project.description)"
-        class="muted"
-        data-testid="project-description"
-        :doc="project.description"
-      />
-      <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
+      <ProjectHeader :project="project" />
 
-      <div class="columns">
-        <section class="tasks">
-          <h3>タスク</h3>
-          <RichTextForm
-            v-if="editable"
-            :key="projectId"
-            data-testid="create-task"
-            :project-id="projectId"
-            :draft-key="draftKeys.newTask(projectId)"
-            :initial-doc="emptyRichTextDoc()"
-            label="タスクの本文"
-            placeholder="本文（任意）"
-            submit-label="追加"
-            allow-empty
-            :error-messages="CREATE_TASK_ERRORS"
-            :submit="createTask"
+      <section class="space-y-4" aria-label="タスク">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <TaskFilterBar
+            class="min-w-0 flex-1"
+            :filters="filters"
+            :sort="sort"
+            :members="members"
+            :labels="labels"
+            @update:filters="updateTaskQuery($event, sort)"
+            @update:sort="updateTaskQuery(filters, $event)"
+          />
+          <Dialog v-if="editable" v-model:open="createTaskOpen">
+            <DialogTrigger as-child>
+              <Button type="button" size="sm" class="order-first w-full sm:order-none sm:w-auto"
+                >タスクを作成</Button
+              >
+            </DialogTrigger>
+            <DialogContent class="sm:max-w-2xl" @interact-outside="onCreateTaskInteractOutside">
+              <DialogHeader>
+                <DialogTitle>タスクを作成</DialogTitle>
+              </DialogHeader>
+              <RichTextForm
+                :key="projectId"
+                data-testid="create-task"
+                :project-id="projectId"
+                :draft-key="draftKeys.newTask(projectId)"
+                :initial-doc="taskDescriptionTemplate()"
+                label="タスクの本文"
+                placeholder="本文（任意）"
+                submit-label="追加"
+                allow-empty
+                :error-messages="CREATE_TASK_ERRORS"
+                :submit="createTask"
+                @submitted="createTaskOpen = false"
+              >
+                <Input
+                  v-model="newTitle"
+                  type="text"
+                  placeholder="タスクを追加"
+                  required
+                  maxlength="200"
+                  aria-label="タスクのタイトル"
+                />
+              </RichTextForm>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <div class="rounded-lg border">
+          <div
+            class="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2 text-sm"
           >
-            <input
-              v-model="newTitle"
-              type="text"
-              placeholder="タスクを追加"
-              required
-              maxlength="200"
-              aria-label="タスクのタイトル"
-            />
-          </RichTextForm>
-          <label>
-            <input v-model="includeArchived" type="checkbox" aria-label="アーカイブ済みも表示" />
-            アーカイブ済みも表示
-          </label>
-          <p v-if="tasks.length === 0">タスクはありません</p>
-          <ul class="task-list">
+            <div class="flex items-center gap-4" role="group" aria-label="状態で絞り込む">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5"
+                :class="
+                  statusFilter === 'open'
+                    ? 'font-semibold text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                :aria-pressed="statusFilter === 'open'"
+                data-testid="filter-open"
+                @click="statusFilter = 'open'"
+              >
+                <CircleDot class="size-4 text-success" aria-hidden="true" />
+                未完了 {{ openCount }}
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5"
+                :class="
+                  statusFilter === 'done'
+                    ? 'font-semibold text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                :aria-pressed="statusFilter === 'done'"
+                data-testid="filter-done"
+                @click="statusFilter = 'done'"
+              >
+                <CircleCheck class="size-4 text-info" aria-hidden="true" />
+                完了 {{ doneCount }}
+              </button>
+            </div>
+            <!-- Focus does not bubble, so reka-ui's focus handler on this wrapper never sees the checkbox; track focusin/out instead. -->
+            <TooltipProvider>
+              <Tooltip v-model:open="archivedHelpOpen">
+                <TooltipTrigger as-child>
+                  <div
+                    class="flex items-center gap-2"
+                    @focusin="archivedHelpOpen = true"
+                    @focusout="archivedHelpOpen = false"
+                  >
+                    <Checkbox id="include-archived" v-model="includeArchived" />
+                    <Label for="include-archived" class="font-normal">アーカイブ済みも表示</Label>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent class="max-w-xs">{{ TASK_ARCHIVE_HELP }}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <EmptyState
+            v-if="visibleTasks.length === 0"
+            class="rounded-none border-0"
+            :message="emptyMessage"
+          />
+          <ul v-else class="divide-y">
             <li
-              v-for="task in tasks"
+              v-for="task in visibleTasks"
               :key="task.id"
-              :class="{
-                selected: task.id === selectedTaskId,
-                done: task.status === 'done',
-                archived: task.archivedAt !== null,
-              }"
+              class="flex items-start gap-3 px-4 py-3 hover:bg-muted/30"
+              :class="{ done: task.status === 'done', archived: task.archivedAt !== null }"
               data-testid="task"
             >
-              <div class="task-row">
-                <input
-                  v-if="editable"
-                  type="checkbox"
-                  :checked="task.status === 'done'"
-                  aria-label="完了"
-                  @change="toggleDone(task)"
-                />
-                <span v-else>{{ task.status === 'done' ? '完了' : '未完了' }}</span>
-                <span class="color-dot" :style="{ background: TASK_COLOR_HEX[task.color] }" />
-                <button type="button" class="link" @click="selectTask(task)">
-                  {{ task.title }}
-                </button>
-                <template v-if="editable">
-                  <button v-if="task.archivedAt === null" type="button" @click="archiveTask(task)">
-                    アーカイブ
-                  </button>
-                  <button v-else type="button" @click="unarchiveTask(task)">復元</button>
-                </template>
-              </div>
-              <div class="task-meta">
-                <UserAvatar
-                  v-if="task.assignee"
-                  :name="task.assignee.name"
-                  :avatar-url="task.assignee.avatarUrl"
-                  :size="20"
-                />
-                <label v-if="editable">
-                  担当:
-                  <select
-                    :value="task.assignee?.id ?? ''"
-                    aria-label="担当者"
-                    @change="assign(task, $event)"
+              <TaskStateIcon class="mt-0.5" :status="task.status" />
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <RouterLink
+                    :to="{ name: 'task', params: { projectId, taskId: task.id } }"
+                    class="min-w-0 font-semibold break-words hover:text-primary hover:underline"
+                    data-testid="task-open"
                   >
-                    <option value="">未割り当て</option>
-                    <option v-for="member in members" :key="member.userId" :value="member.userId">
-                      {{ member.name }}
-                    </option>
-                  </select>
-                </label>
-                <span v-else>担当: {{ task.assignee?.name ?? '未割り当て' }}</span>
-                <UserAvatar
-                  :name="task.createdBy.name"
-                  :avatar-url="task.createdBy.avatarUrl"
-                  :size="20"
-                />
-                <span class="muted">作成: {{ task.createdBy.name }}</span>
+                    {{ task.title }}
+                  </RouterLink>
+                  <TaskLabelPill v-if="task.label" :label="task.label" data-testid="task-label" />
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground" data-testid="task-meta">
+                  {{ task.createdBy.name }} が
+                  <RelativeTime :datetime="task.createdAt" />
+                  に作成<template v-if="taskPeriod(task)">
+                    ·
+                    <span
+                      :class="dueStateClass(task.endDate, task.status)"
+                      data-testid="task-period"
+                      >{{ taskPeriod(task) }}</span
+                    ></template
+                  ><template v-if="task.archivedAt !== null"> · アーカイブ済み</template>
+                </p>
               </div>
-              <div v-if="editable" class="task-meta">
-                <input
-                  type="date"
-                  aria-label="開始日"
-                  :value="task.startDate ?? ''"
-                  @change="changeDate(task, 'startDate', $event)"
-                />
-                〜
-                <input
-                  type="date"
-                  aria-label="終了日"
-                  :value="task.endDate ?? ''"
-                  @change="changeDate(task, 'endDate', $event)"
-                />
-                <select :value="task.color" aria-label="色" @change="changeColor(task, $event)">
-                  <option v-for="color in TASK_COLORS" :key="color" :value="color">
-                    {{ TASK_COLOR_LABELS[color] }}
-                  </option>
-                </select>
-              </div>
-              <div v-else class="task-meta">
-                <span v-if="task.startDate && task.endDate">
-                  期間: {{ task.startDate }} 〜 {{ task.endDate }}
-                </span>
-                <span>色: {{ TASK_COLOR_LABELS[task.color] }}</span>
-              </div>
+              <UserAvatar
+                v-if="task.assignee"
+                :user-id="task.assignee.id"
+                :name="task.assignee.name"
+                :avatar-url="task.assignee.avatarUrl"
+                :size="20"
+                :title="task.assignee.name"
+                data-testid="task-assignee"
+              />
             </li>
           </ul>
-        </section>
-
-        <section class="thread" data-testid="thread">
-          <!-- A <div>, not <template>: happy-dom returns null for form.nextSibling, which breaks fragment removal in tests. -->
-          <div v-if="selectedTask">
-            <TaskTitle :key="selectedTask.id" :task="selectedTask" :editable="editable" />
-            <TaskDescription :key="selectedTask.id" :task="selectedTask" :editable="editable" />
-            <CommentThread
-              :key="selectedTask.id"
-              :project-id="projectId"
-              :task-id="selectedTask.id"
-              :comments="comments"
-              :comments-error="commentsError"
-              :editable="editable"
-              :current-user-id="authStore.user?.id ?? null"
-            />
-          </div>
-          <p v-else class="muted">タスクを選択するとスレッドが表示されます</p>
-        </section>
-      </div>
+        </div>
+      </section>
     </template>
   </div>
 </template>
-
-<style scoped>
-.header {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-}
-
-.columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-
-@media (max-width: 720px) {
-  .columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.thread {
-  border-left: 1px solid #ddd;
-  padding-left: 24px;
-}
-
-.task-list {
-  list-style: none;
-  padding: 0;
-}
-
-.task-list > li {
-  padding: 8px;
-  border-bottom: 1px solid #ddd;
-}
-
-.task-list > li.selected {
-  background: #eef4ff;
-}
-
-.task-list > li.archived {
-  opacity: 0.5;
-}
-
-.task-list > li.done .link {
-  text-decoration: line-through;
-  color: #666;
-}
-
-.task-row,
-.task-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-meta {
-  margin-top: 4px;
-  font-size: 0.9em;
-}
-
-.color-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.link {
-  flex: 1;
-  text-align: left;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-}
-
-.muted {
-  color: #666;
-}
-
-.error {
-  color: #c00;
-}
-</style>

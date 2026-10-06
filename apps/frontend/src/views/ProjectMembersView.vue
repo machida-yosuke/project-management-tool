@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   canManageMembers,
@@ -19,12 +19,55 @@ import {
   useRemoveMember,
   useUpdateMemberRole,
 } from '../api/generated';
+import EmptyState from '../components/layout/EmptyState.vue';
+import ProjectHeader from '../components/layout/ProjectHeader.vue';
+import ProjectNotFound from '../components/layout/ProjectNotFound.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
+import { Badge } from '../components/ui/badge';
+import { Button, buttonVariants } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table';
 import { ApiRequestError, errorMessage } from '../lib/api';
-import { eventValue } from '../lib/form';
 import { useInvalidate } from '../lib/query';
 import { ROLE_LABELS } from '../lib/roles';
 import { useAuthStore } from '../stores/auth';
+
+const destructiveClass = buttonVariants({ variant: 'destructive' });
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -43,14 +86,18 @@ const invitationsQuery = useListProjectInvitations(projectId, () => ({
 }));
 const invitations = computed(() => invitationsQuery.data.value ?? []);
 
+const firstLoadError = computed(
+  () =>
+    projectQuery.error.value ?? membersQuery.error.value ?? invitationsQuery.error.value ?? null,
+);
+const projectNotFound = computed(() => {
+  const e = firstLoadError.value;
+  return e instanceof ApiRequestError && e.status === 404;
+});
 const loadError = computed(() => {
-  const e =
-    projectQuery.error.value ?? membersQuery.error.value ?? invitationsQuery.error.value ?? null;
-  if (!e) return '';
-  // Non-members get 404 so the project's existence is not leaked.
-  return e instanceof ApiRequestError && e.status === 404
-    ? 'プロジェクトが見つかりません'
-    : errorMessage(e, {}, 'メンバーの読み込みに失敗しました');
+  if (projectNotFound.value) return '';
+  const e = firstLoadError.value;
+  return e ? errorMessage(e, {}, 'メンバーの読み込みに失敗しました') : '';
 });
 
 const actionError = ref('');
@@ -58,6 +105,13 @@ const inviteForm = reactive<{ email: string; role: ProjectRole; passcode: string
   email: '',
   role: 'staff',
   passcode: '',
+});
+const inviteOpen = ref(false);
+const inviteError = ref('');
+const inviting = ref(false);
+
+watch(inviteOpen, (open) => {
+  if (open) inviteError.value = '';
 });
 
 const { mutateAsync: updateMemberRole } = useUpdateMemberRole({
@@ -93,8 +147,18 @@ async function runAction(action: () => Promise<unknown>, messages: Record<string
   }
 }
 
-function changeRole(member: ProjectMember, event: Event) {
-  const role = eventValue(event) as ProjectRole;
+function toRole(value: unknown): ProjectRole {
+  const role = PROJECT_ROLES.find((r) => r === value);
+  if (!role) throw new Error(`Unknown project role: ${String(value)}`);
+  return role;
+}
+
+function setInviteRole(value: unknown) {
+  inviteForm.role = toRole(value);
+}
+
+function changeRole(member: ProjectMember, value: unknown) {
+  const role = toRole(value);
   return runAction(
     () =>
       updateMemberRole({
@@ -113,26 +177,39 @@ function removeMember(member: ProjectMember) {
   );
 }
 
-function invite() {
-  return runAction(
-    async () => {
-      await createInvitation({
-        projectId: projectId.value,
-        createInvitationRequest: {
-          email: inviteForm.email.trim(),
-          role: inviteForm.role,
-          passcode: inviteForm.passcode,
-        },
-      });
-      inviteForm.email = '';
-      inviteForm.role = 'staff';
-      inviteForm.passcode = '';
-    },
-    {
-      already_member: 'このメールアドレスのユーザーはすでにメンバーです',
-      validation_error: 'メールアドレスと暗証番号（4〜32文字）を確認してください',
-    },
-  );
+async function invite() {
+  if (inviting.value) return;
+  inviteError.value = '';
+  inviting.value = true;
+  try {
+    await createInvitation({
+      projectId: projectId.value,
+      createInvitationRequest: {
+        email: inviteForm.email.trim(),
+        role: inviteForm.role,
+        passcode: inviteForm.passcode,
+      },
+    });
+    inviteForm.email = '';
+    inviteForm.role = 'staff';
+    inviteForm.passcode = '';
+    inviteOpen.value = false;
+  } catch (e) {
+    inviteError.value = errorMessage(
+      e,
+      {
+        already_member: 'このメールアドレスのユーザーはすでにメンバーです',
+        validation_error: 'メールアドレスと暗証番号（4〜32文字）を確認してください',
+      },
+      '操作に失敗しました',
+    );
+  } finally {
+    inviting.value = false;
+  }
+}
+
+function onInviteInteractOutside(event: Event) {
+  if (inviting.value) event.preventDefault();
 }
 
 function cancelInvitation(invitationId: string) {
@@ -150,161 +227,234 @@ function formatDate(iso: string) {
 
 <template>
   <div>
-    <p v-if="loadError" class="error" role="alert">{{ loadError }}</p>
+    <ProjectNotFound v-if="projectNotFound" />
+    <p v-if="loadError" class="my-4 text-destructive" role="alert">{{ loadError }}</p>
     <template v-if="project">
-      <header class="header">
-        <h2>{{ project.name }} のメンバー</h2>
-        <router-link :to="{ name: 'project', params: { projectId: project.id } }">
-          タスクに戻る
-        </router-link>
-        <router-link :to="{ name: 'project-calendar', params: { projectId: project.id } }">
-          カレンダー
-        </router-link>
-      </header>
-      <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
+      <ProjectHeader :project="project" />
+      <p v-if="actionError" class="mb-4 text-sm text-destructive" role="alert">
+        {{ actionError }}
+      </p>
 
-      <table class="table">
-        <thead>
-          <tr>
-            <th>名前</th>
-            <th>メール</th>
-            <th>ロール</th>
-            <th v-if="isAdmin" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="member in members" :key="member.userId" data-testid="member">
-            <td>
-              <span class="name-cell">
-                <UserAvatar :name="member.name" :avatar-url="member.avatarUrl" />
-                {{ member.name }}
-                <span v-if="member.isOwner" class="muted">（オーナー）</span>
-              </span>
-            </td>
-            <td>{{ member.email }}</td>
-            <td>
-              <select
-                v-if="isAdmin && !member.isOwner"
-                :value="member.role"
-                aria-label="ロール"
-                @change="changeRole(member, $event)"
-              >
-                <option v-for="role in PROJECT_ROLES" :key="role" :value="role">
-                  {{ ROLE_LABELS[role] }}
-                </option>
-              </select>
-              <span v-else>{{ ROLE_LABELS[member.role] }}</span>
-            </td>
-            <td v-if="isAdmin">
-              <button v-if="canRemove(member)" type="button" @click="removeMember(member)">
-                削除
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <template v-if="isAdmin">
+      <div class="flex flex-col gap-8">
         <section>
-          <h3>招待する</h3>
-          <p class="muted">
-            暗証番号は招待相手に別の手段で伝えてください。あとから確認はできません。
-          </p>
-          <form class="inline-form" data-testid="invite-form" @submit.prevent="invite">
-            <input
-              v-model="inviteForm.email"
-              type="email"
-              placeholder="メールアドレス"
-              required
-              aria-label="メールアドレス"
-            />
-            <select v-model="inviteForm.role" aria-label="招待するロール">
-              <option v-for="role in PROJECT_ROLES" :key="role" :value="role">
-                {{ ROLE_LABELS[role] }}
-              </option>
-            </select>
-            <input
-              v-model="inviteForm.passcode"
-              type="password"
-              placeholder="暗証番号"
-              required
-              minlength="4"
-              maxlength="32"
-              autocomplete="new-password"
-              aria-label="暗証番号"
-            />
-            <button type="submit">招待</button>
-          </form>
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold">メンバー</h2>
+            <Dialog v-if="isAdmin" v-model:open="inviteOpen">
+              <DialogTrigger as-child>
+                <Button type="button" size="sm">招待する</Button>
+              </DialogTrigger>
+              <DialogContent @interact-outside="onInviteInteractOutside">
+                <DialogHeader>
+                  <DialogTitle>招待する</DialogTitle>
+                  <DialogDescription>
+                    暗証番号は招待相手に別の手段で伝えてください。あとから確認はできません。
+                  </DialogDescription>
+                </DialogHeader>
+                <form class="grid gap-4" data-testid="invite-form" @submit.prevent="invite">
+                  <div class="grid gap-2">
+                    <Label for="invite-email">メールアドレス</Label>
+                    <Input
+                      id="invite-email"
+                      v-model="inviteForm.email"
+                      type="email"
+                      placeholder="name@example.com"
+                      required
+                      aria-label="メールアドレス"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                      Google アカウントでログインできるメールアドレスのみ招待できます。
+                    </p>
+                  </div>
+                  <div class="grid gap-2">
+                    <Label for="invite-role">ロール</Label>
+                    <Select :model-value="inviteForm.role" @update:model-value="setInviteRole">
+                      <SelectTrigger id="invite-role" class="w-full" aria-label="招待するロール">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="role in PROJECT_ROLES" :key="role" :value="role">
+                          {{ ROLE_LABELS[role] }}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div class="grid gap-2">
+                    <Label for="invite-passcode">暗証番号</Label>
+                    <Input
+                      id="invite-passcode"
+                      v-model="inviteForm.passcode"
+                      type="password"
+                      placeholder="4〜32文字"
+                      required
+                      minlength="4"
+                      maxlength="32"
+                      autocomplete="new-password"
+                      aria-label="暗証番号"
+                    />
+                  </div>
+                  <p v-if="inviteError" class="text-sm text-destructive" role="alert">
+                    {{ inviteError }}
+                  </p>
+                  <DialogFooter>
+                    <Button type="submit" :disabled="inviting">招待</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div class="rounded-lg border">
+            <Table class="block sm:table">
+              <TableHeader class="hidden sm:table-header-group">
+                <TableRow class="hover:bg-transparent">
+                  <TableHead class="px-4">メンバー</TableHead>
+                  <TableHead class="px-4">ロール</TableHead>
+                  <TableHead v-if="isAdmin" class="px-4">
+                    <span class="sr-only">操作</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody class="block sm:table-row-group">
+                <TableRow
+                  v-for="member in members"
+                  :key="member.userId"
+                  class="block border-b px-4 py-3 last:border-b-0 sm:table-row sm:p-0"
+                  data-testid="member"
+                >
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap"
+                  >
+                    <div class="flex items-center gap-3">
+                      <UserAvatar
+                        :user-id="member.userId"
+                        :name="member.name"
+                        :avatar-url="member.avatarUrl"
+                      />
+                      <div class="flex min-w-0 flex-col">
+                        <span class="flex items-center gap-2 font-medium">
+                          {{ member.name }}
+                          <Badge v-if="member.isOwner" variant="warning">オーナー</Badge>
+                        </span>
+                        <span class="text-xs break-all text-muted-foreground">{{
+                          member.email
+                        }}</span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell
+                    class="flex items-center gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3"
+                  >
+                    <span class="text-xs text-muted-foreground sm:hidden">ロール:</span>
+                    <Select
+                      v-if="isAdmin && !member.isOwner"
+                      :model-value="member.role"
+                      @update:model-value="changeRole(member, $event)"
+                    >
+                      <SelectTrigger size="sm" aria-label="ロール">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="role in PROJECT_ROLES" :key="role" :value="role">
+                          {{ ROLE_LABELS[role] }}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Badge v-else variant="info">{{ ROLE_LABELS[member.role] }}</Badge>
+                  </TableCell>
+                  <TableCell
+                    v-if="isAdmin"
+                    class="flex flex-wrap gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3 sm:text-right"
+                  >
+                    <AlertDialog v-if="canRemove(member)">
+                      <AlertDialogTrigger as-child>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          class="text-destructive hover:text-destructive"
+                        >
+                          削除
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>メンバーを削除</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {{ member.name }} をこのプロジェクトから削除します。
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            :class="destructiveClass"
+                            @click="removeMember(member)"
+                          >
+                            削除
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </section>
 
-        <section>
-          <h3>未受諾の招待</h3>
-          <p v-if="invitations.length === 0" class="muted">未受諾の招待はありません</p>
-          <ul class="list">
-            <li
-              v-for="invitation in invitations"
-              :key="invitation.id"
-              data-testid="pending-invitation"
-            >
-              <span>{{ invitation.email }}</span>
-              <span>（{{ ROLE_LABELS[invitation.role] }}）</span>
-              <span class="muted">期限: {{ formatDate(invitation.expiresAt) }}</span>
-              <button type="button" @click="cancelInvitation(invitation.id)">取消</button>
-            </li>
-          </ul>
+        <section v-if="isAdmin">
+          <h2 class="mb-3 text-lg font-semibold">未受諾の招待</h2>
+          <EmptyState v-if="invitations.length === 0" message="未受諾の招待はありません" />
+          <div v-else class="rounded-lg border">
+            <Table class="block sm:table">
+              <TableHeader class="hidden sm:table-header-group">
+                <TableRow class="hover:bg-transparent">
+                  <TableHead class="px-4">メールアドレス</TableHead>
+                  <TableHead class="px-4">ロール</TableHead>
+                  <TableHead class="px-4">期限</TableHead>
+                  <TableHead class="px-4">
+                    <span class="sr-only">操作</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody class="block sm:table-row-group">
+                <TableRow
+                  v-for="invitation in invitations"
+                  :key="invitation.id"
+                  class="block border-b px-4 py-3 last:border-b-0 sm:table-row sm:p-0"
+                  data-testid="pending-invitation"
+                >
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap break-all"
+                    >{{ invitation.email }}</TableCell
+                  >
+                  <TableCell
+                    class="flex items-center gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3"
+                  >
+                    <span class="text-xs text-muted-foreground sm:hidden">ロール:</span>
+                    <Badge variant="warning">{{ ROLE_LABELS[invitation.role] }}</Badge>
+                  </TableCell>
+                  <TableCell
+                    class="block px-0 py-1 whitespace-normal sm:table-cell sm:px-4 sm:py-3 sm:whitespace-nowrap text-muted-foreground"
+                  >
+                    <span class="sm:hidden">期限: </span>{{ formatDate(invitation.expiresAt) }}
+                  </TableCell>
+                  <TableCell
+                    class="flex flex-wrap gap-2 px-0 py-1 sm:table-cell sm:px-4 sm:py-3 sm:text-right"
+                  >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      @click="cancelInvitation(invitation.id)"
+                    >
+                      キャンセル
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </section>
-      </template>
+      </div>
     </template>
   </div>
 </template>
-
-<style scoped>
-.header {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-}
-
-.table {
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 6px 12px;
-  border-bottom: 1px solid #ddd;
-  text-align: left;
-}
-
-.name-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.inline-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.list {
-  list-style: none;
-  padding: 0;
-}
-
-.list > li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-}
-
-.muted {
-  color: #666;
-}
-
-.error {
-  color: #c00;
-}
-</style>

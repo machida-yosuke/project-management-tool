@@ -5,11 +5,15 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import type { Component } from 'vue';
 import HomeView from '../../src/views/HomeView.vue';
 import LoginView from '../../src/views/LoginView.vue';
+import ManualPageView from '../../src/views/ManualPageView.vue';
 import ProjectCalendarView from '../../src/views/ProjectCalendarView.vue';
+import ProjectHomeView from '../../src/views/ProjectHomeView.vue';
+import ProjectLabelsView from '../../src/views/ProjectLabelsView.vue';
+import ProjectManualsView from '../../src/views/ProjectManualsView.vue';
 import ProjectMembersView from '../../src/views/ProjectMembersView.vue';
-import ProjectSettingsView from '../../src/views/ProjectSettingsView.vue';
 import ProjectView from '../../src/views/ProjectView.vue';
 import SettingsView from '../../src/views/SettingsView.vue';
+import TaskDetailView from '../../src/views/TaskDetailView.vue';
 import { useAuthStore } from '../../src/stores/auth';
 import type { UserSummary } from '@pm-tool/shared';
 
@@ -31,7 +35,14 @@ export async function mountAt(
       { path: '/', name: 'home', component: HomeView },
       { path: '/login', name: 'login', component: LoginView },
       { path: '/settings', name: 'settings', component: SettingsView },
-      { path: '/projects/:projectId', name: 'project', component: ProjectView },
+      { path: '/projects/:projectId', name: 'project', component: ProjectHomeView },
+      { path: '/projects/:projectId/tasks', name: 'project-tasks', component: ProjectView },
+      { path: '/projects/:projectId/tasks/:taskId', name: 'task', component: TaskDetailView },
+      {
+        path: '/projects/:projectId/labels',
+        name: 'project-labels',
+        component: ProjectLabelsView,
+      },
       {
         path: '/projects/:projectId/members',
         name: 'project-members',
@@ -43,9 +54,14 @@ export async function mountAt(
         component: ProjectCalendarView,
       },
       {
-        path: '/projects/:projectId/settings',
-        name: 'project-settings',
-        component: ProjectSettingsView,
+        path: '/projects/:projectId/manuals',
+        name: 'project-manuals',
+        component: ProjectManualsView,
+      },
+      {
+        path: '/projects/:projectId/manuals/:manualId',
+        name: 'manual',
+        component: ManualPageView,
       },
     ],
   });

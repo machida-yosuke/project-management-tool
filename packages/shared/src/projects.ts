@@ -6,18 +6,44 @@ export type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const TASK_STATUSES = ['open', 'done'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const TASK_COLORS = [
-  'red',
-  'orange',
-  'yellow',
-  'green',
-  'teal',
-  'blue',
-  'purple',
-  'gray',
-] as const;
-export type TaskColor = (typeof TASK_COLORS)[number];
-export const DEFAULT_TASK_COLOR: TaskColor = 'gray';
+export type LabelColor = string;
+export const LABEL_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+export function isLabelColor(value: unknown): value is LabelColor {
+  return typeof value === 'string' && LABEL_COLOR_PATTERN.test(value);
+}
+
+export function normalizeLabelColor(value: string): LabelColor {
+  return value.toLowerCase();
+}
+
+export const LABEL_COLOR_PRESETS: readonly LabelColor[] = [
+  '#e5484d',
+  '#f76b15',
+  '#d4a017',
+  '#30a46c',
+  '#12a594',
+  '#3e63dd',
+  '#8e4ec6',
+  '#8b8d98',
+];
+export const DEFAULT_LABEL_COLOR: LabelColor = '#8b8d98';
+
+export const LABEL_NAME_MAX_LENGTH = 50;
+
+export const DEFAULT_LABELS: readonly { name: string; color: LabelColor }[] = [
+  { name: 'バグ報告', color: '#e5484d' },
+  { name: '更新依頼', color: '#3e63dd' },
+  { name: 'その他', color: '#8b8d98' },
+];
+
+export interface TaskLabel {
+  id: string;
+  projectId: string;
+  name: string;
+  color: LabelColor;
+  createdAt: string;
+}
 
 export interface UserSummary {
   id: string;
@@ -32,6 +58,7 @@ export interface Project {
   description: RichTextDoc;
   ownerId: string;
   role: ProjectRole;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -66,11 +93,15 @@ export interface Task {
   assignee: UserSummary | null;
   startDate: string | null;
   endDate: string | null;
-  color: TaskColor;
+  label: TaskLabel | null;
   archivedAt: string | null;
   createdBy: UserSummary;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MyTask extends Task {
+  project: { id: string; name: string };
 }
 
 export interface TaskComment {

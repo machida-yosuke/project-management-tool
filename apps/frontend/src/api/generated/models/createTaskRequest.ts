@@ -41,14 +41,15 @@
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
  * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - 画像添付のアップロード: `admin` / `staff`
+ * - マニュアルの閲覧・検索: 全ロール。作成・更新・削除: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
 import type { RichTextDoc } from './richTextDoc';
-import type { TaskColor } from './taskColor';
 
 export interface CreateTaskRequest {
   /**
@@ -74,6 +75,9 @@ export interface CreateTaskRequest {
      * @nullable
      */
   endDate?: string | null;
-  /** 省略時は gray */
-  color?: TaskColor;
+  /**
+     * 付けるラベルの ID（このプロジェクトのラベルであること。それ以外は `400 validation_error`）。省略・`null` でラベルなし。
+     * @nullable
+     */
+  labelId?: string | null;
 }

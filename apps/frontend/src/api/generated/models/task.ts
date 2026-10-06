@@ -41,15 +41,17 @@
  * - 閲覧: 全ロール（`admin` / `staff` / `substaff`）
  * - 編集（プロジェクト更新・タスク作成/更新/アーカイブ・コメント投稿）: `admin` / `staff`
  * - 画像添付のアップロード: `admin` / `staff`
+ * - マニュアルの閲覧・検索: 全ロール。作成・更新・削除: `admin` / `staff`
  * - コメント編集: 投稿者本人（かつ `admin` / `staff`）
  * - メンバー・招待の管理: `admin`
+ * - プロジェクトの完了・進行中への戻し: `admin`
  * - プロジェクト削除: オーナーのみ
  *
  * OpenAPI spec version: 0.0.0
  */
 import type { CalendarDate } from './calendarDate';
 import type { RichTextDoc } from './richTextDoc';
-import type { TaskColor } from './taskColor';
+import type { TaskLabel } from './taskLabel';
 import type { TaskStatus } from './taskStatus';
 import type { Timestamp } from './timestamp';
 import type { UserSummary } from './userSummary';
@@ -59,7 +61,7 @@ export interface Task {
   projectId: string;
   title: string;
   description: RichTextDoc;
-  /** 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・色の変更では更新されない。未編集なら `null` */
+  /** 本文が作成後に編集されたことがある場合の最終編集日時。状態・担当・日付・ラベルの変更では更新されない。未編集なら `null` */
   descriptionEditedAt: Timestamp | null;
   status: TaskStatus;
   assignee: UserSummary | null;
@@ -67,7 +69,8 @@ export interface Task {
   startDate: CalendarDate | null;
   /** 終了日。`startDate` と両方 `null` か両方あり */
   endDate: CalendarDate | null;
-  color: TaskColor;
+  /** 付いているラベル。なければ `null` */
+  label: TaskLabel | null;
   /** アーカイブした日時。`null` なら未アーカイブ */
   archivedAt: Timestamp | null;
   createdBy: UserSummary;
