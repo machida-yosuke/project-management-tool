@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { SELF } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BAN_DURATION_MS,
   STRIKE_DEBOUNCE_MS,
@@ -11,6 +11,8 @@ import {
 } from '../../src/rate-limit/bans';
 
 const LIMIT = 100;
+const LIMITER_PERIOD_MS = 60 * 1000;
+const WINDOW_HEADROOM_MS = 10 * 1000;
 
 function randomIp(): string {
   const octet = () => Math.floor(Math.random() * 254) + 1;
@@ -37,7 +39,18 @@ async function seedBan(ip: string, record: BanRecord): Promise<void> {
   await env.CACHE.put(banKey(ip), JSON.stringify(record));
 }
 
+// miniflare's local limiter counts in fixed windows aligned to the wall clock, so LIMIT + 1
+// requests straddling a minute boundary never trip it. Start each test with enough headroom.
+async function waitForWindowHeadroom(): Promise<void> {
+  const remaining = LIMITER_PERIOD_MS - (Date.now() % LIMITER_PERIOD_MS);
+  if (remaining < WINDOW_HEADROOM_MS) {
+    await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+}
+
 describe('rateLimit middleware', () => {
+  beforeEach(waitForWindowHeadroom, WINDOW_HEADROOM_MS + 5000);
+
   it('does not limit requests without cf-connecting-ip', async () => {
     const statuses = await hitMany(LIMIT + 1);
     expect(statuses.every((s) => s === 200)).toBe(true);
